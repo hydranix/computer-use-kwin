@@ -396,4 +396,45 @@ mod tests {
         assert!(move_error.to_string().contains("cannot move windows"));
         assert!(resize_error.to_string().contains("cannot resize windows"));
     }
+
+    #[tokio::test]
+    async fn dispatches_successful_kwin_move_and_resize() {
+        let uuid = "b4dfacf8-a559-43c9-8b1f-ecd5cfd78359";
+        let mut target = window(KWIN_BACKEND);
+        target.window_id = 15_605_548_758_018_230_245;
+        let windows_json = format!(
+            r#"{{"backend":"kwin","pluginName":"placeholder","windows":[{{"uuid":"{uuid}","caption":"Codex","normalWindow":true}}]}}"#
+        );
+        let move_result_json = format!(
+            r#"{{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"{uuid}","x":120,"y":240,"width":800,"height":600}}"#
+        );
+        let resize_result_json = format!(
+            r#"{{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"{uuid}","x":10,"y":20,"width":640,"height":480}}"#
+        );
+
+        let (moved, resized) =
+            crate::windowing::backends::kwin::transaction_tests::with_fake_kwin_responses(
+                vec![
+                    windows_json.clone(),
+                    move_result_json,
+                    windows_json,
+                    resize_result_json,
+                ],
+                || async {
+                    let moved = move_window(&target, 120, 240).await;
+                    let resized = resize_window(&target, 640, 480).await;
+                    (moved, resized)
+                },
+            )
+            .await;
+
+        let moved: serde_json::Value = serde_json::from_str(&moved.unwrap()).unwrap();
+        let resized: serde_json::Value = serde_json::from_str(&resized.unwrap()).unwrap();
+        assert_eq!(moved["ok"], true);
+        assert_eq!(moved["x"], 120);
+        assert_eq!(moved["y"], 240);
+        assert_eq!(resized["ok"], true);
+        assert_eq!(resized["width"], 640);
+        assert_eq!(resized["height"], 480);
+    }
 }

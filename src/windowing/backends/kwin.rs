@@ -1546,9 +1546,10 @@ mod callback_tests {
 }
 
 #[cfg(test)]
-mod transaction_tests {
+pub(crate) mod transaction_tests {
     use super::*;
     use std::{
+        collections::VecDeque,
         future::pending,
         io::{BufRead, BufReader},
         process::{Child, Command, Stdio},
@@ -1564,20 +1565,27 @@ mod transaction_tests {
         HangLoad,
         HangStart,
         NoCallback,
+        Callback,
     }
+
+    static SESSION_BUS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     struct FakeKwinScripting {
         behavior: FakeKwinBehavior,
         load_calls: Arc<AtomicUsize>,
         start_calls: Arc<AtomicUsize>,
         unload_calls: Arc<AtomicUsize>,
+        responses: Arc<Mutex<VecDeque<String>>>,
+        loaded_script: Arc<Mutex<Option<(String, String)>>>,
+        service_connection: Arc<std::sync::OnceLock<zbus::Connection>>,
     }
 
     #[zbus::interface(name = "org.kde.kwin.Scripting")]
     impl FakeKwinScripting {
         #[zbus(name = "loadScript")]
-        async fn load_script(&self, _path: &str, _plugin_name: &str) -> i32 {
+        async fn load_script(&self, path: &str, plugin_name: &str) -> i32 {
             self.load_calls.fetch_add(1, Ordering::SeqCst);
+            *self.loaded_script.lock().unwrap() = Some((path.to_string(), plugin_name.to_string()));
             if matches!(self.behavior, FakeKwinBehavior::HangLoad) {
                 pending::<()>().await;
             }
@@ -1585,11 +1593,52 @@ mod transaction_tests {
         }
 
         #[zbus(name = "start")]
-        async fn start(&self) {
+        async fn start(&self) -> zbus::fdo::Result<()> {
             self.start_calls.fetch_add(1, Ordering::SeqCst);
             if matches!(self.behavior, FakeKwinBehavior::HangStart) {
                 pending::<()>().await;
             }
+            if matches!(self.behavior, FakeKwinBehavior::Callback) {
+                let (script_path, plugin_name) =
+                    self.loaded_script.lock().unwrap().clone().ok_or_else(|| {
+                        zbus::fdo::Error::Failed("script was not loaded".to_string())
+                    })?;
+                let script = fs::read_to_string(script_path)
+                    .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+                let destination = script_string(&script, "var serviceName = ")?;
+                let object_path = script_string(&script, "var objectPath = ")?;
+                let payload = self
+                    .responses
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .ok_or_else(|| {
+                        zbus::fdo::Error::Failed("no fake KWin response queued".to_string())
+                    })?
+                    .replace("placeholder", &plugin_name);
+
+                let connection = self.service_connection.get().ok_or_else(|| {
+                    zbus::fdo::Error::Failed("fake KWin connection was not initialized".to_string())
+                })?;
+                let proxy = Proxy::new(
+                    connection,
+                    destination.as_str(),
+                    object_path.as_str(),
+                    KWIN_CALLBACK_INTERFACE,
+                )
+                .await
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+                let method = if script.contains("\"ReceiveWindows\"") {
+                    "ReceiveWindows"
+                } else {
+                    "ReceiveResult"
+                };
+                let _: () = proxy
+                    .call(method, &(payload.as_str(),))
+                    .await
+                    .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+            }
+            Ok(())
         }
 
         #[zbus(name = "unloadScript")]
@@ -1597,6 +1646,15 @@ mod transaction_tests {
             self.unload_calls.fetch_add(1, Ordering::SeqCst);
             true
         }
+    }
+
+    fn script_string(script: &str, prefix: &str) -> zbus::fdo::Result<String> {
+        let value = script
+            .split_once(prefix)
+            .and_then(|(_, rest)| rest.trim_start().strip_prefix('"'))
+            .and_then(|rest| rest.split_once('"').map(|(value, _)| value))
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("missing {prefix} in script")))?;
+        Ok(value.to_string())
     }
 
     struct TestSessionBus {
@@ -1631,11 +1689,77 @@ mod transaction_tests {
         }
     }
 
+    struct SessionBusEnvGuard(Option<std::ffi::OsString>);
+
+    impl SessionBusEnvGuard {
+        fn set(address: &str) -> Self {
+            let previous = std::env::var_os("DBUS_SESSION_BUS_ADDRESS");
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", address);
+            Self(previous)
+        }
+    }
+
+    impl Drop for SessionBusEnvGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = self.0.take() {
+                std::env::set_var("DBUS_SESSION_BUS_ADDRESS", previous);
+            } else {
+                std::env::remove_var("DBUS_SESSION_BUS_ADDRESS");
+            }
+        }
+    }
+
+    pub(crate) async fn with_fake_kwin_responses<F, Fut, T>(
+        responses: Vec<String>,
+        operation: F,
+    ) -> T
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = T>,
+    {
+        let _env_lock = SESSION_BUS_ENV_LOCK.lock().await;
+        let bus = TestSessionBus::start();
+        let load_calls = Arc::new(AtomicUsize::new(0));
+        let start_calls = Arc::new(AtomicUsize::new(0));
+        let unload_calls = Arc::new(AtomicUsize::new(0));
+        let queued_responses = Arc::new(Mutex::new(responses.into()));
+        let server_connection = Arc::new(std::sync::OnceLock::new());
+        let service_connection = zbus::connection::Builder::address(bus.address.as_str())
+            .unwrap()
+            .name(KWIN_SCRIPTING_SERVICE)
+            .unwrap()
+            .serve_at(
+                KWIN_SCRIPTING_OBJECT_PATH,
+                FakeKwinScripting {
+                    behavior: FakeKwinBehavior::Callback,
+                    load_calls,
+                    start_calls,
+                    unload_calls,
+                    responses: queued_responses,
+                    loaded_script: Arc::new(Mutex::new(None)),
+                    service_connection: Arc::clone(&server_connection),
+                },
+            )
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+        assert!(server_connection.set(service_connection.clone()).is_ok());
+        let _env = SessionBusEnvGuard::set(bus.address.as_str());
+
+        let result = operation().await;
+        drop(_env);
+        drop(service_connection);
+        drop(bus);
+        result
+    }
+
     async fn assert_transaction_timeout_cleans_up(behavior: FakeKwinBehavior) {
         let bus = TestSessionBus::start();
         let load_calls = Arc::new(AtomicUsize::new(0));
         let start_calls = Arc::new(AtomicUsize::new(0));
         let unload_calls = Arc::new(AtomicUsize::new(0));
+        let server_connection = Arc::new(std::sync::OnceLock::new());
         let service_connection = zbus::connection::Builder::address(bus.address.as_str())
             .unwrap()
             .name(KWIN_SCRIPTING_SERVICE)
@@ -1647,12 +1771,16 @@ mod transaction_tests {
                     load_calls: Arc::clone(&load_calls),
                     start_calls: Arc::clone(&start_calls),
                     unload_calls: Arc::clone(&unload_calls),
+                    responses: Arc::new(Mutex::new(VecDeque::new())),
+                    loaded_script: Arc::new(Mutex::new(None)),
+                    service_connection: Arc::clone(&server_connection),
                 },
             )
             .unwrap()
             .build()
             .await
             .unwrap();
+        assert!(server_connection.set(service_connection.clone()).is_ok());
         let client_connection = zbus::connection::Builder::address(bus.address.as_str())
             .unwrap()
             .build()
@@ -1712,11 +1840,77 @@ mod transaction_tests {
     }
 
     #[tokio::test]
+    async fn move_result_from_registered_kwin_callback_is_returned_as_success() {
+        let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":120,"y":240,"width":800,"height":600}"#;
+        let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
+            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240).await
+        })
+        .await;
+
+        let result: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["x"], 120);
+        assert_eq!(result["y"], 240);
+        assert_eq!(result["width"], 800);
+        assert_eq!(result["height"], 600);
+    }
+
+    #[tokio::test]
+    async fn resize_result_from_registered_kwin_callback_is_returned_as_success() {
+        let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":10,"y":20,"width":640,"height":480}"#;
+        let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
+            call_kwin_resize_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 640, 480).await
+        })
+        .await;
+
+        let result: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["width"], 640);
+        assert_eq!(result["height"], 480);
+    }
+
+    #[tokio::test]
+    async fn move_returns_an_error_when_the_window_is_missing() {
+        let result = with_fake_kwin_responses(
+            vec![r#"{"backend":"kwin","pluginName":"placeholder","windows":[]}"#.to_string()],
+            || async {
+                move_window(
+                    kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359"),
+                    120,
+                    240,
+                )
+                .await
+            },
+        )
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No KWin window matched"));
+    }
+
+    #[tokio::test]
+    async fn geometry_operation_returns_an_error_for_invalid_frame_geometry() {
+        let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":false,"error":"invalid frame geometry"}"#;
+        let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
+            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240).await
+        })
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid frame geometry"));
+    }
+
+    #[tokio::test]
     async fn duplicate_callback_path_fails_without_disturbing_its_owner() {
         let bus = TestSessionBus::start();
         let load_calls = Arc::new(AtomicUsize::new(0));
         let start_calls = Arc::new(AtomicUsize::new(0));
         let unload_calls = Arc::new(AtomicUsize::new(0));
+        let server_connection = Arc::new(std::sync::OnceLock::new());
         let service_connection = zbus::connection::Builder::address(bus.address.as_str())
             .unwrap()
             .name(KWIN_SCRIPTING_SERVICE)
@@ -1728,12 +1922,16 @@ mod transaction_tests {
                     load_calls: Arc::clone(&load_calls),
                     start_calls: Arc::clone(&start_calls),
                     unload_calls: Arc::clone(&unload_calls),
+                    responses: Arc::new(Mutex::new(VecDeque::new())),
+                    loaded_script: Arc::new(Mutex::new(None)),
+                    service_connection: Arc::clone(&server_connection),
                 },
             )
             .unwrap()
             .build()
             .await
             .unwrap();
+        assert!(server_connection.set(service_connection.clone()).is_ok());
         let client_connection = zbus::connection::Builder::address(bus.address.as_str())
             .unwrap()
             .build()
