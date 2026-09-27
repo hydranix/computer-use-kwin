@@ -38,6 +38,28 @@ pub async fn setup_window_targeting_report() -> WindowTargetingSetupReport {
     hydrate_session_bus_env();
 
     let extension_dir = extension_dir();
+    let unsupported_error =
+        "GNOME Shell window targeting is unsupported; KWin is the only window backend".to_string();
+    if crate::windowing::registry::descriptor(
+        crate::windowing::registry::GNOME_SHELL_EXTENSION_BACKEND,
+    )
+    .is_none()
+    {
+        return WindowTargetingSetupReport {
+            extension_dir: extension_dir.display().to_string(),
+            wrote_files: false,
+            enable_command: SetupCommandReport {
+                ok: false,
+                detail: unsupported_error.clone(),
+            },
+            windows: Vec::new(),
+            windows_error: Some(unsupported_error.clone()),
+            permissions_hint: None,
+            requires_shell_reload: false,
+            message: unsupported_error,
+        };
+    }
+
     let extension_was_enabled = gnome_extension_enabled();
     let mut wrote_files = false;
     let mut changed_files = false;
@@ -59,8 +81,6 @@ pub async fn setup_window_targeting_report() -> WindowTargetingSetupReport {
         run_gnome_extensions_enable()
     };
 
-    let unsupported_error =
-        "GNOME Shell window targeting is unsupported; KWin is the only window backend".to_string();
     let windows = Vec::new();
     let windows_error = Some(unsupported_error.clone());
     let permissions_hint = None;
