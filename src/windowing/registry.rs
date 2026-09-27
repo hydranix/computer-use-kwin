@@ -240,6 +240,7 @@ pub async fn move_window(window: &WindowInfo, x: i32, y: i32) -> Result<String> 
         GNOME_SHELL_EXTENSION_BACKEND => {
             gnome::move_extension_window(window.window_id, x, y).await
         }
+        KWIN_BACKEND => kwin::move_window(window.window_id, x, y).await,
         X11_BACKEND => x11::move_window(window.window_id, x, y).await,
         backend => Err(anyhow!(
             "Window backend {backend} cannot move windows; move_window needs the computer-use-linux GNOME Shell extension or a generic X11/EWMH session."
@@ -252,6 +253,7 @@ pub async fn resize_window(window: &WindowInfo, width: i32, height: i32) -> Resu
         GNOME_SHELL_EXTENSION_BACKEND => {
             gnome::resize_extension_window(window.window_id, width, height).await
         }
+        KWIN_BACKEND => kwin::resize_window(window.window_id, width, height).await,
         X11_BACKEND => x11::resize_window(window.window_id, width, height).await,
         backend => Err(anyhow!(
             "Window backend {backend} cannot resize windows; resize_window needs the computer-use-linux GNOME Shell extension or a generic X11/EWMH session."
@@ -379,5 +381,19 @@ mod tests {
         .is_none());
 
         assert_eq!(errors, vec!["KWin failed: loadScript failed"]);
+    }
+
+    #[tokio::test]
+    async fn dispatches_kwin_resize_and_keeps_other_backends_unsupported() {
+        let kwin_error = resize_window(&window(KWIN_BACKEND), 0, 480)
+            .await
+            .unwrap_err();
+        assert!(kwin_error.to_string().contains("positive"));
+
+        let unsupported = window(COSMIC_WAYLAND_BACKEND);
+        let move_error = move_window(&unsupported, 120, 240).await.unwrap_err();
+        let resize_error = resize_window(&unsupported, 640, 480).await.unwrap_err();
+        assert!(move_error.to_string().contains("cannot move windows"));
+        assert!(resize_error.to_string().contains("cannot resize windows"));
     }
 }

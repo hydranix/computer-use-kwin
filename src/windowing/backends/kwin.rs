@@ -67,6 +67,23 @@ pub async fn activate_window(window_id: u64) -> Result<()> {
     call_kwin_activate_script(&uuid).await
 }
 
+pub async fn move_window(window_id: u64, x: i32, y: i32) -> Result<String> {
+    let uuid = kwin_uuid_for_window_id(window_id)
+        .await?
+        .with_context(|| format!("No KWin window matched window_id {window_id} during move"))?;
+    call_kwin_move_script(&uuid, x, y).await
+}
+
+pub async fn resize_window(window_id: u64, width: i32, height: i32) -> Result<String> {
+    if width <= 0 || height <= 0 {
+        bail!("KWin resize dimensions must be positive (received {width}x{height})");
+    }
+    let uuid = kwin_uuid_for_window_id(window_id)
+        .await?
+        .with_context(|| format!("No KWin window matched window_id {window_id} during resize"))?;
+    call_kwin_resize_script(&uuid, width, height).await
+}
+
 async fn kwin_uuid_for_window_id(window_id: u64) -> Result<Option<String>> {
     let json = call_kwin_window_script().await?;
     let snapshot = parse_kwin_snapshot(&json)?;
@@ -100,6 +117,52 @@ async fn call_kwin_activate_script(uuid: &str) -> Result<()> {
     } else {
         bail!(
             "KWin activation script refused activation: {}",
+            result.error.unwrap_or_else(|| "unknown error".to_string())
+        );
+    }
+}
+
+async fn call_kwin_move_script(uuid: &str, x: i32, y: i32) -> Result<String> {
+    let uuid = uuid.to_string();
+    call_kwin_geometry_script(
+        "move",
+        move |service_name, callback_object_path, plugin_name| {
+            write_kwin_move_script(service_name, callback_object_path, plugin_name, &uuid, x, y)
+        },
+    )
+    .await
+}
+
+async fn call_kwin_resize_script(uuid: &str, width: i32, height: i32) -> Result<String> {
+    let uuid = uuid.to_string();
+    call_kwin_geometry_script(
+        "resize",
+        move |service_name, callback_object_path, plugin_name| {
+            write_kwin_resize_script(
+                service_name,
+                callback_object_path,
+                plugin_name,
+                &uuid,
+                width,
+                height,
+            )
+        },
+    )
+    .await
+}
+
+async fn call_kwin_geometry_script<F>(operation: &str, write_script: F) -> Result<String>
+where
+    F: FnOnce(&str, &str, &str) -> Result<std::path::PathBuf>,
+{
+    let json = call_kwin_script(KwinCallbackKind::Result, write_script).await?;
+    let result: KwinScriptResult =
+        serde_json::from_str(&json).context("failed to parse KWin geometry script output")?;
+    if result.ok {
+        Ok(json)
+    } else {
+        bail!(
+            "KWin {operation} script refused the operation: {}",
             result.error.unwrap_or_else(|| "unknown error".to_string())
         );
     }
@@ -811,6 +874,193 @@ fn kwin_activate_script_source(
     ))
 }
 
+fn write_kwin_move_script(
+    service_name: &str,
+    callback_object_path: &str,
+    plugin_name: &str,
+    uuid: &str,
+    x: i32,
+    y: i32,
+) -> Result<std::path::PathBuf> {
+    let script =
+        kwin_move_script_source(service_name, callback_object_path, plugin_name, uuid, x, y)?;
+    write_kwin_script_file(plugin_name, &script)
+}
+
+fn write_kwin_resize_script(
+    service_name: &str,
+    callback_object_path: &str,
+    plugin_name: &str,
+    uuid: &str,
+    width: i32,
+    height: i32,
+) -> Result<std::path::PathBuf> {
+    let script = kwin_resize_script_source(
+        service_name,
+        callback_object_path,
+        plugin_name,
+        uuid,
+        width,
+        height,
+    )?;
+    write_kwin_script_file(plugin_name, &script)
+}
+
+fn kwin_move_script_source(
+    service_name: &str,
+    callback_object_path: &str,
+    plugin_name: &str,
+    uuid: &str,
+    x: i32,
+    y: i32,
+) -> Result<String> {
+    kwin_geometry_script_source(
+        service_name,
+        callback_object_path,
+        plugin_name,
+        uuid,
+        &format!("Qt.rect({x}, {y}, frame.width, frame.height)"),
+        "move",
+    )
+}
+
+fn kwin_resize_script_source(
+    service_name: &str,
+    callback_object_path: &str,
+    plugin_name: &str,
+    uuid: &str,
+    width: i32,
+    height: i32,
+) -> Result<String> {
+    if width <= 0 || height <= 0 {
+        bail!("KWin resize dimensions must be positive (received {width}x{height})");
+    }
+    kwin_geometry_script_source(
+        service_name,
+        callback_object_path,
+        plugin_name,
+        uuid,
+        &format!("Qt.rect(frame.x, frame.y, {width}, {height})"),
+        "resize",
+    )
+}
+
+fn kwin_geometry_script_source(
+    service_name: &str,
+    callback_object_path: &str,
+    plugin_name: &str,
+    uuid: &str,
+    geometry_expression: &str,
+    operation: &str,
+) -> Result<String> {
+    let target_uuid =
+        normalize_kwin_uuid(uuid).context("KWin geometry operation requires a uuid")?;
+    let service_name = serde_json::to_string(service_name)?;
+    let object_path = serde_json::to_string(callback_object_path)?;
+    let interface = serde_json::to_string(KWIN_CALLBACK_INTERFACE)?;
+    let plugin_name_json = serde_json::to_string(plugin_name)?;
+    let target_uuid = serde_json::to_string(&target_uuid)?;
+    let operation = serde_json::to_string(operation)?;
+
+    Ok(format!(
+        r#"(function() {{
+    var serviceName = {service_name};
+    var objectPath = {object_path};
+    var iface = {interface};
+    var pluginName = {plugin_name_json};
+    var targetUuid = {target_uuid};
+
+    function send(payload) {{
+        payload.backend = "kwin";
+        payload.pluginName = pluginName;
+        callDBus(serviceName, objectPath, iface, "ReceiveResult", JSON.stringify(payload));
+    }}
+
+    function normalizeUuid(value) {{
+        if (value === null || value === undefined) {{
+            return null;
+        }}
+        var text = String(value).trim().toLowerCase();
+        if (text.charAt(0) === "{{" && text.charAt(text.length - 1) === "}}") {{
+            text = text.substring(1, text.length - 1);
+        }}
+        return text.length > 0 ? text : null;
+    }}
+
+    function windowUuid(window) {{
+        var uuid = null;
+        try {{
+            uuid = normalizeUuid(window.uuid);
+        }} catch (error) {{}}
+        if (!uuid) {{
+            try {{
+                uuid = normalizeUuid(window.internalId);
+            }} catch (error) {{}}
+        }}
+        return uuid;
+    }}
+
+    function listWindows() {{
+        try {{
+            if (typeof workspace.windowList === "function") {{
+                return workspace.windowList();
+            }}
+        }} catch (error) {{}}
+        try {{
+            if (typeof workspace.clientList === "function") {{
+                return workspace.clientList();
+            }}
+        }} catch (error) {{}}
+        return [];
+    }}
+
+    try {{
+        var windows = listWindows();
+        var window = null;
+        for (var i = 0; i < windows.length; i++) {{
+            if (windowUuid(windows[i]) === targetUuid) {{
+                window = windows[i];
+                break;
+            }}
+        }}
+        if (!window) {{
+            throw new Error("window not found: " + targetUuid);
+        }}
+
+        var frame = window.frameGeometry;
+        if (!frame || !isFinite(frame.x) || !isFinite(frame.y) ||
+                !isFinite(frame.width) || !isFinite(frame.height) ||
+                frame.width <= 0 || frame.height <= 0) {{
+            throw new Error("invalid frame geometry");
+        }}
+        var expectedFrame = {geometry_expression};
+        window.frameGeometry = {geometry_expression};
+        var actualFrame = window.frameGeometry;
+        if (!actualFrame || actualFrame.x !== expectedFrame.x ||
+                actualFrame.y !== expectedFrame.y ||
+                actualFrame.width !== expectedFrame.width ||
+                actualFrame.height !== expectedFrame.height) {{
+            throw new Error("KWin refused to " + {operation} + " the window");
+        }}
+        send({{
+            ok: true,
+            uuid: windowUuid(window),
+            x: actualFrame.x,
+            y: actualFrame.y,
+            width: actualFrame.width,
+            height: actualFrame.height
+        }});
+    }} catch (error) {{
+        send({{
+            ok: false,
+            error: String(error && error.message ? error.message : error)
+        }});
+    }}
+}})();
+"#
+    ))
+}
+
 fn write_kwin_script_file(plugin_name: &str, script: &str) -> Result<std::path::PathBuf> {
     for attempt in 0..4 {
         let filename = if attempt == 0 {
@@ -1198,6 +1448,44 @@ mod adapter_tests {
         assert!(script.contains("workspace.activeClient = targetWindow;"));
         assert!(script.contains(r#""ReceiveResult""#));
         assert!(!script.contains("WindowsRunner"));
+    }
+
+    #[test]
+    fn kwin_move_and_resize_scripts_preserve_unspecified_frame_geometry() {
+        let args = (
+            ":1.234",
+            "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
+            "computer_use_linux_kwin_window_query_test",
+            "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
+        );
+        let move_script =
+            kwin_move_script_source(args.0, args.1, args.2, args.3, 120, 240).unwrap();
+        let resize_script =
+            kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, 480).unwrap();
+
+        for script in [&move_script, &resize_script] {
+            assert!(script.contains(r#"var targetUuid = "b4dfacf8-a559-43c9-8b1f-ecd5cfd78359";"#));
+            assert!(script.contains("windowUuid(windows[i]) === targetUuid"));
+            assert!(script.contains(r#""ReceiveResult""#));
+            assert!(script.contains("ok: true"));
+            assert!(script.contains(r#"throw new Error("window not found: " + targetUuid)"#));
+            assert!(script.contains("ok: false"));
+        }
+
+        assert!(move_script
+            .contains("window.frameGeometry = Qt.rect(120, 240, frame.width, frame.height)"));
+        assert!(
+            resize_script.contains("window.frameGeometry = Qt.rect(frame.x, frame.y, 640, 480)")
+        );
+        assert!(kwin_resize_script_source(args.0, args.1, args.2, args.3, 0, 480).is_err());
+        assert!(kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, -1).is_err());
+    }
+
+    #[tokio::test]
+    async fn kwin_resize_rejects_non_positive_dimensions_before_bus_access() {
+        let error = resize_window(1, 0, 480).await.unwrap_err();
+
+        assert!(error.to_string().contains("positive"));
     }
 }
 
