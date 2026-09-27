@@ -37,6 +37,7 @@ __pycache__/
 /npm/bin/computer-use-linux-win32-*
 /npm/bin/computer-use-linux-cosmic
 /.agent-shell/
+/.worktrees/
 
 
 # Agent docs
