@@ -20,8 +20,7 @@ use crate::terminal::{terminal_paste_shortcut, TerminalPasteShortcut};
 use crate::windowing::registry;
 use crate::windows::{
     focus_window_target, focused_window, list_windows, resolve_window_target,
-    window_permission_hint, WindowFocusResult, WindowInfo, WindowTarget,
-    GNOME_SHELL_EXTENSION_BACKEND, GNOME_SHELL_INTROSPECT_BACKEND, KWIN_BACKEND,
+    window_permission_hint, WindowFocusResult, WindowInfo, WindowTarget, KWIN_BACKEND,
 };
 use crate::ydotool;
 use anyhow::Result;
@@ -279,7 +278,7 @@ impl ComputerUseLinux {
             Err(error) => {
                 let error = format!("{error:#}");
                 Json(FocusedWindowOutput {
-                    backend: GNOME_SHELL_INTROSPECT_BACKEND.to_string(),
+                    backend: KWIN_BACKEND.to_string(),
                     focused_window: None,
                     permissions_hint: window_permission_hint(&error),
                     error: Some(error),
@@ -323,7 +322,7 @@ impl ComputerUseLinux {
                 Json(ActivateWindowOutput {
                     ok: false,
                     implemented: true,
-                    backend: GNOME_SHELL_INTROSPECT_BACKEND.to_string(),
+                    backend: KWIN_BACKEND.to_string(),
                     focus: None,
                     permissions_hint: window_permission_hint(&error),
                     error: Some(error),
@@ -1848,7 +1847,7 @@ impl ComputerUseLinux {
 
     #[tool(
         name = "move_window",
-        description = "Move a window to a new desktop position (frame top-left in desktop coordinates). Useful to recover windows that are partially off-screen. Works through the computer-use-linux GNOME Shell extension or a generic X11/EWMH window manager (wmctrl).",
+        description = "Move a window to a new desktop position (frame top-left in desktop coordinates) through KWin scripting. Useful to recover windows that are partially off-screen.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -1870,7 +1869,7 @@ impl ComputerUseLinux {
 
     #[tool(
         name = "resize_window",
-        description = "Resize a window to a new frame width/height in desktop pixels, unmaximizing it first if needed. Useful to fit a window fully on-screen. Works through the computer-use-linux GNOME Shell extension or a generic X11/EWMH window manager (wmctrl).",
+        description = "Resize a window to a new frame width/height in desktop pixels through KWin scripting, unmaximizing it first if needed. Useful to fit a window fully on-screen.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -3198,30 +3197,7 @@ impl ComputerUseLinux {
                 "targeted screenshot has unusable window bounds; refusing to return the full desktop"
             )
         })?;
-        let monitors = if window.backend == GNOME_SHELL_EXTENSION_BACKEND {
-            Some(
-                crate::windowing::backends::gnome::extension_monitor_layout()
-                    .await
-                    .map_err(|error| {
-                        anyhow::anyhow!(
-                            "GNOME targeted screenshot requires logical monitor geometry: {error:#}"
-                        )
-                    })?
-                    .into_iter()
-                    .map(|monitor| (monitor.x, monitor.y, monitor.width, monitor.height))
-                    .collect(),
-            )
-        } else if window.backend == GNOME_SHELL_INTROSPECT_BACKEND {
-            crate::windowing::backends::gnome::extension_monitor_layout()
-                .await
-                .ok()
-                .map(|monitors| {
-                    monitors
-                        .into_iter()
-                        .map(|monitor| (monitor.x, monitor.y, monitor.width, monitor.height))
-                        .collect()
-                })
-        } else if window.backend == KWIN_BACKEND {
+        let monitors = if window.backend == KWIN_BACKEND {
             Some(vec![
                 crate::windowing::backends::kwin::logical_desktop_rect()
                     .await
@@ -3256,10 +3232,7 @@ impl ComputerUseLinux {
             .focused_window
             .as_ref()
             .unwrap_or(&focus.requested_window);
-        if !matches!(
-            window.backend.as_str(),
-            GNOME_SHELL_EXTENSION_BACKEND | GNOME_SHELL_INTROSPECT_BACKEND | KWIN_BACKEND
-        ) {
+        if window.backend != KWIN_BACKEND {
             let full_capture_rect = window
                 .bounds
                 .as_ref()
@@ -3370,24 +3343,17 @@ impl ComputerUseLinux {
         session.logical_point_from_capture(x, y, capture_size)
     }
 
-    /// COORDINATE SPACES: window bounds (list_windows / extension frame rects)
-    /// and the extension monitor layout are in LOGICAL pixels, while click/
-    /// scroll coordinates and screenshot captures are in PHYSICAL capture
+    /// COORDINATE SPACES: KWin window bounds and desktop geometry are in LOGICAL
+    /// pixels, while click/scroll coordinates and screenshot captures are in PHYSICAL capture
     /// pixels. On fractionally-scaled displays the two differ, so each check
     /// below only ever compares values from the same space.
     ///
-    /// Logical monitor rectangles from the GNOME Shell extension, for checks
-    /// against logical window bounds. None when the extension is unavailable.
+    /// KWin desktop geometry for checks against logical window bounds.
     async fn logical_monitor_rects(&self) -> Option<Vec<(i32, i32, i32, i32)>> {
-        let monitors = crate::windowing::backends::gnome::extension_monitor_layout()
+        let desktop = crate::windowing::backends::kwin::logical_desktop_rect()
             .await
             .ok()?;
-        (!monitors.is_empty()).then(|| {
-            monitors
-                .iter()
-                .map(|m| (m.x, m.y, m.width, m.height))
-                .collect()
-        })
+        Some(vec![desktop])
     }
 
     /// Physical capture-space desktop rectangle (union of monitors as captured
@@ -3416,8 +3382,8 @@ impl ComputerUseLinux {
         if bounds.width == 0 || bounds.height == 0 {
             return None;
         }
-        // Window bounds are logical pixels: prefer the extension's logical
-        // monitor layout (same space). The physical capture rect is a safe
+        // Window bounds are logical pixels: prefer KWin's logical desktop
+        // geometry (same space). The physical capture rect is a safe
         // fallback — on scaled displays it is at least as large as the logical
         // union, so it can only under-warn, never false-positive.
         let rects = match self.logical_monitor_rects().await {
@@ -3488,8 +3454,8 @@ impl ComputerUseLinux {
         }
     }
 
-    /// Shared move/resize plumbing: resolve the window target, run the GNOME
-    /// Shell extension operation, then re-query bounds to report the result.
+    /// Shared move/resize plumbing: resolve the window target, invoke KWin,
+    /// then re-query bounds to report the result.
     async fn window_geometry_op<F, Fut>(
         &self,
         received: Option<serde_json::Value>,
@@ -4807,7 +4773,7 @@ async fn window_list_output() -> ListWindowsOutput {
         Err(error) => {
             let error = format!("{error:#}");
             ListWindowsOutput {
-                backend: GNOME_SHELL_INTROSPECT_BACKEND.to_string(),
+                backend: KWIN_BACKEND.to_string(),
                 windows: Vec::new(),
                 permissions_hint: window_permission_hint(&error),
                 error: Some(error),
@@ -4822,7 +4788,7 @@ fn window_backend<'a>(windows: impl Iterator<Item = &'a WindowInfo>) -> String {
     windows
         .map(|window| window.backend.clone())
         .next()
-        .unwrap_or_else(|| GNOME_SHELL_INTROSPECT_BACKEND.to_string())
+        .unwrap_or_else(|| KWIN_BACKEND.to_string())
 }
 
 fn absolute_mousemove_args(x: i32, y: i32) -> Vec<String> {
@@ -5833,7 +5799,7 @@ fn looks_like_desktop_app(name: &str, command: &str) -> bool {
 mod tests {
     use super::*;
     use crate::atspi_tree::{AccessibilityAction, Bounds};
-    use crate::windows::{WindowBounds, GNOME_SHELL_EXTENSION_BACKEND};
+    use crate::windows::{WindowBounds, KWIN_BACKEND};
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
@@ -6323,7 +6289,7 @@ mod tests {
             focused: false,
             hidden: false,
             client_type: Some("wayland".to_string()),
-            backend: GNOME_SHELL_EXTENSION_BACKEND.to_string(),
+            backend: KWIN_BACKEND.to_string(),
             terminal: None,
         }
     }

@@ -205,35 +205,6 @@ fn portal_input_lock() -> Arc<AsyncMutex<()>> {
 }
 
 async fn logical_desktop_layout() -> Option<Vec<LogicalMonitor>> {
-    if env_token_contains("XDG_CURRENT_DESKTOP", "gnome") {
-        if let Some(layout) = crate::windowing::backends::gnome::extension_monitor_layout()
-            .await
-            .ok()
-            .filter(|monitors| !monitors.is_empty())
-            .map(|monitors| {
-                monitors
-                    .into_iter()
-                    .map(|monitor| LogicalMonitor {
-                        x: monitor.x,
-                        y: monitor.y,
-                        width: monitor.width,
-                        height: monitor.height,
-                        scale: monitor.scale,
-                    })
-                    .collect::<Vec<_>>()
-            })
-        {
-            if layout.iter().all(|monitor| {
-                monitor.width > 0
-                    && monitor.height > 0
-                    && monitor.scale.is_finite()
-                    && monitor.scale >= 0.0
-            }) {
-                return Some(layout);
-            }
-        }
-    }
-
     if env_token_contains("XDG_CURRENT_DESKTOP", "hyprland") {
         let mut command = Command::new("hyprctl");
         command.args(["monitors", "-j"]);

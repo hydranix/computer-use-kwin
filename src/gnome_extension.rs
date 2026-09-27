@@ -1,8 +1,7 @@
 use crate::command_runner;
 use crate::diagnostics::hydrate_session_bus_env;
 use crate::identity;
-use crate::windowing::backends::gnome::list_extension_windows;
-use crate::windows::{window_permission_hint, WindowInfo};
+use crate::windows::WindowInfo;
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::{
@@ -60,17 +59,18 @@ pub async fn setup_window_targeting_report() -> WindowTargetingSetupReport {
         run_gnome_extensions_enable()
     };
 
-    let (windows, windows_error, permissions_hint) = match list_extension_windows().await {
-        Ok(windows) => (windows, None, None),
-        Err(error) => {
-            let error = format!("{error:#}");
-            let hint = window_permission_hint(&error);
-            (Vec::new(), Some(error), hint)
-        }
-    };
+    let unsupported_error =
+        "GNOME Shell window targeting is unsupported; KWin is the only window backend".to_string();
+    let windows = Vec::new();
+    let windows_error = Some(unsupported_error.clone());
+    let permissions_hint = None;
 
-    let requires_shell_reload =
-        setup_requires_shell_reload(windows_error.as_ref(), extension_was_enabled, changed_files);
+    let requires_shell_reload = windows_error.is_none()
+        && setup_requires_shell_reload(
+            windows_error.as_ref(),
+            extension_was_enabled,
+            changed_files,
+        );
     let message = if !wrote_files {
         "Could not install the computer-use-linux GNOME Shell extension files.".to_string()
     } else if !enable_command.ok {
@@ -82,8 +82,7 @@ pub async fn setup_window_targeting_report() -> WindowTargetingSetupReport {
         "computer-use-linux GNOME Shell extension is active and window targeting is available."
             .to_string()
     } else {
-        "computer-use-linux GNOME Shell extension files were installed and enable was requested, but GNOME Shell is not serving the window-control DBus API yet. Log out and back in, then retry setup_window_targeting."
-            .to_string()
+        unsupported_error
     };
 
     WindowTargetingSetupReport {

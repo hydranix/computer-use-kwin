@@ -97,7 +97,7 @@ pub(crate) async fn run_from_env() -> Result<()> {
                     let backend = windows
                         .first()
                         .map(|window| window.backend.as_str())
-                        .unwrap_or(windows::GNOME_SHELL_INTROSPECT_BACKEND);
+                        .unwrap_or(windows::KWIN_BACKEND);
                     serde_json::json!({
                         "backend": backend,
                         "windows": windows,

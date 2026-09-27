@@ -4,10 +4,7 @@ pub mod target;
 pub mod types;
 
 #[allow(unused_imports)]
-pub use registry::{
-    COSMIC_WAYLAND_BACKEND, GNOME_SHELL_EXTENSION_BACKEND, GNOME_SHELL_INTROSPECT_BACKEND,
-    HYPRLAND_BACKEND, I3_BACKEND, KWIN_BACKEND, WINDOW_PERMISSION_HINT, X11_BACKEND,
-};
+pub use registry::{KWIN_BACKEND, WINDOW_PERMISSION_HINT};
 #[allow(unused_imports)]
 pub use target::{
     focus_window_target, focused_window, list_windows, resolve_window_target,
@@ -18,50 +15,9 @@ pub use types::{WindowBounds, WindowFocusResult, WindowInfo, WindowTarget};
 
 #[cfg(test)]
 mod tests {
-    use super::backends::gnome::window_from_properties;
-    use super::backends::hyprland::{parse_hyprland_clients, HYPRLAND_BACKEND};
-    use super::backends::i3::{parse_i3_tree, parse_xprop_pid, I3_BACKEND};
-    use super::registry::{
-        descriptors, list_note, COSMIC_WAYLAND_BACKEND, GNOME_SHELL_EXTENSION_BACKEND,
-        GNOME_SHELL_INTROSPECT_BACKEND,
-    };
     use super::target::ensure_backend_can_focus_target;
     use super::*;
     use crate::terminal::{TerminalProcess, TerminalWindowContext};
-    use std::collections::HashMap;
-    use zbus::zvariant::OwnedValue;
-    use zbus::zvariant::Value;
-
-    fn owned_value(value: Value<'_>) -> OwnedValue {
-        OwnedValue::try_from(value).unwrap()
-    }
-
-    #[test]
-    fn registry_keeps_stable_backend_order() {
-        let ids = descriptors()
-            .iter()
-            .map(|descriptor| descriptor.id)
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            ids,
-            vec![
-                GNOME_SHELL_EXTENSION_BACKEND,
-                GNOME_SHELL_INTROSPECT_BACKEND,
-                COSMIC_WAYLAND_BACKEND,
-                KWIN_BACKEND,
-                HYPRLAND_BACKEND,
-                I3_BACKEND,
-                X11_BACKEND,
-            ]
-        );
-    }
-
-    #[test]
-    fn registry_serves_backend_list_notes() {
-        assert!(list_note(COSMIC_WAYLAND_BACKEND).contains("COSMIC Wayland helper"));
-        assert!(list_note("missing-backend").contains("GNOME Shell Introspect"));
-    }
 
     fn window(window_id: u64, title: &str, app_id: &str, wm_class: &str) -> WindowInfo {
         WindowInfo {
@@ -80,7 +36,7 @@ mod tests {
             focused: false,
             hidden: false,
             client_type: Some("wayland".to_string()),
-            backend: GNOME_SHELL_INTROSPECT_BACKEND.to_string(),
+            backend: KWIN_BACKEND.to_string(),
             terminal: None,
         }
     }
@@ -165,13 +121,14 @@ mod tests {
     }
 
     #[test]
-    fn exact_targets_require_extension_activation_backend() {
-        let window = window(
+    fn exact_targets_require_exact_focus_backend() {
+        let mut window = window(
             2,
             "Ghostty",
             "com.mitchellh.ghostty.desktop",
             "com.mitchellh.ghostty",
         );
+        window.backend = "unsupported-backend".to_string();
 
         let error = ensure_backend_can_focus_target(
             &WindowTarget {
@@ -198,36 +155,6 @@ mod tests {
         ensure_backend_can_focus_target(
             &WindowTarget {
                 app_id: Some("com.mitchellh.ghostty.desktop".to_string()),
-                ..Default::default()
-            },
-            &window,
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn cosmic_backend_can_exact_focus_targets() {
-        let mut window = window(2, "Codex", "codex-desktop", "codex-desktop");
-        window.backend = COSMIC_WAYLAND_BACKEND.to_string();
-
-        ensure_backend_can_focus_target(
-            &WindowTarget {
-                title: Some("Codex".to_string()),
-                ..Default::default()
-            },
-            &window,
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn i3_backend_can_exact_focus_targets() {
-        let mut window = window(2, "Codex", "codex-desktop", "codex-desktop");
-        window.backend = I3_BACKEND.to_string();
-
-        ensure_backend_can_focus_target(
-            &WindowTarget {
-                title: Some("Codex".to_string()),
                 ..Default::default()
             },
             &window,
@@ -467,187 +394,10 @@ mod tests {
     }
 
     #[test]
-    fn maps_access_denied_errors_to_permission_hint() {
-        let hint = window_permission_hint(
-            "GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: GetWindows is not allowed",
-        );
+    fn maps_session_bus_errors_to_kwin_permission_hint() {
+        let hint = window_permission_hint("failed to connect to session bus");
 
         assert_eq!(hint.as_deref(), Some(WINDOW_PERMISSION_HINT));
-    }
-
-    #[test]
-    fn parses_hyprland_clients_as_window_info() {
-        let clients_json = r#"[
-          {
-            "address": "0x559952b6db60",
-            "mapped": true,
-            "hidden": false,
-            "at": [10, 48],
-            "size": [1900, 1022],
-            "workspace": {"id": 2, "name": "2"},
-            "class": "brave-browser",
-            "title": "Repo - Brave",
-            "pid": 24134,
-            "xwayland": false,
-            "focusHistoryID": 1
-          },
-          {
-            "address": "0x559952be43d0",
-            "mapped": true,
-            "hidden": false,
-            "at": [10, 48],
-            "size": [1900, 1022],
-            "workspace": {"id": 1, "name": "1"},
-            "class": "codex-desktop",
-            "title": "Codex",
-            "pid": 68986,
-            "xwayland": false,
-            "focusHistoryID": 0
-          },
-          {
-            "address": "0x559952c99aa0",
-            "mapped": true,
-            "hidden": false,
-            "at": [0, 0],
-            "size": [400, 300],
-            "workspace": {"id": 3, "name": "3"},
-            "class": "transient",
-            "title": "Transient",
-            "pid": -1,
-            "xwayland": false,
-            "focusHistoryID": 2
-          }
-        ]"#;
-
-        let windows = parse_hyprland_clients(clients_json).unwrap();
-
-        assert_eq!(windows.len(), 3);
-        assert_eq!(windows[0].window_id, 0x559952b6db60);
-        assert_eq!(windows[0].app_id.as_deref(), Some("brave-browser"));
-        assert_eq!(windows[0].wm_class.as_deref(), Some("brave-browser"));
-        assert_eq!(windows[0].title.as_deref(), Some("Repo - Brave"));
-        assert_eq!(windows[0].pid, Some(24134));
-        assert_eq!(windows[0].bounds.as_ref().unwrap().x, Some(10));
-        assert_eq!(windows[0].bounds.as_ref().unwrap().height, 1022);
-        assert_eq!(windows[0].workspace, Some(2));
-        assert!(!windows[0].focused);
-        assert_eq!(windows[0].client_type.as_deref(), Some("wayland"));
-        assert_eq!(windows[0].backend, HYPRLAND_BACKEND);
-        assert!(windows[1].focused);
-        assert_eq!(windows[2].pid, None);
-    }
-
-    #[test]
-    fn parses_i3_tree_as_window_info() {
-        let tree_json = r#"{
-          "type": "root",
-          "focused": false,
-          "window": null,
-          "nodes": [
-            {
-              "type": "output",
-              "focused": false,
-              "window": null,
-              "nodes": [
-                {
-                  "type": "dockarea",
-                  "focused": false,
-                  "window": null,
-                  "nodes": [
-                    {
-                      "type": "con",
-                      "focused": false,
-                      "window": 25165826,
-                      "window_type": "unknown",
-                      "name": "polybar",
-                      "window_properties": {
-                        "class": "Polybar",
-                        "instance": "polybar",
-                        "title": "polybar"
-                      },
-                      "rect": {"x": 0, "y": 0, "width": 2560, "height": 40}
-                    }
-                  ]
-                },
-                {
-                  "type": "workspace",
-                  "num": 2,
-                  "focused": false,
-                  "window": null,
-                  "nodes": [
-                    {
-                      "type": "con",
-                      "focused": true,
-                      "window": 67108868,
-                      "window_type": "normal",
-                      "name": "Codex",
-                      "window_properties": {
-                        "class": "Codex",
-                        "instance": "codex",
-                        "title": "Codex"
-                      },
-                      "rect": {"x": 0, "y": 782, "width": 2560, "height": 1440}
-                    }
-                  ],
-                  "floating_nodes": [
-                    {
-                      "type": "con",
-                      "focused": false,
-                      "window": 73400323,
-                      "window_type": "dialog",
-                      "name": "Save File",
-                      "window_properties": {
-                        "class": "zenity",
-                        "instance": "zenity",
-                        "title": "Save File"
-                      },
-                      "geometry": {"x": 100, "y": 120, "width": 600, "height": 400}
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }"#;
-
-        let windows = parse_i3_tree(tree_json).unwrap();
-
-        assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0].window_id, 67108868);
-        assert_eq!(windows[0].title.as_deref(), Some("Codex"));
-        assert_eq!(windows[0].app_id.as_deref(), Some("codex"));
-        assert_eq!(windows[0].wm_class.as_deref(), Some("Codex"));
-        assert_eq!(windows[0].workspace, Some(2));
-        assert!(windows[0].focused);
-        assert_eq!(windows[0].client_type.as_deref(), Some("x11"));
-        assert_eq!(windows[0].backend, I3_BACKEND);
-        assert_eq!(windows[0].bounds.as_ref().unwrap().x, Some(0));
-        assert_eq!(windows[1].title.as_deref(), Some("Save File"));
-        assert_eq!(windows[1].bounds.as_ref().unwrap().width, 600);
-    }
-
-    #[test]
-    fn parses_xprop_pid() {
-        assert_eq!(
-            parse_xprop_pid("_NET_WM_PID(CARDINAL) = 19313\n"),
-            Some(19313)
-        );
-        assert_eq!(parse_xprop_pid("_NET_WM_PID:  not found.\n"), None);
-    }
-
-    #[test]
-    fn hyprland_backend_can_exact_focus_targets() {
-        let mut window = window(2, "Codex", "codex-desktop", "codex-desktop");
-        window.backend = HYPRLAND_BACKEND.to_string();
-
-        ensure_backend_can_focus_target(
-            &WindowTarget {
-                title: Some("Codex".to_string()),
-                ..Default::default()
-            },
-            &window,
-        )
-        .unwrap();
     }
 
     #[test]
@@ -663,30 +413,5 @@ mod tests {
             &window,
         )
         .unwrap();
-    }
-
-    #[test]
-    fn extracts_known_window_properties() {
-        let properties = HashMap::from([
-            ("title".to_string(), owned_value(Value::from("Ghostty"))),
-            (
-                "app-id".to_string(),
-                owned_value(Value::from("com.mitchellh.ghostty.desktop")),
-            ),
-            ("wm-class".to_string(), owned_value(Value::from("Ghostty"))),
-            ("client-type".to_string(), owned_value(Value::from(0_u32))),
-            ("is-hidden".to_string(), owned_value(Value::from(false))),
-            ("has-focus".to_string(), owned_value(Value::from(true))),
-            ("width".to_string(), owned_value(Value::from(1200_u32))),
-            ("height".to_string(), owned_value(Value::from(800_u32))),
-        ]);
-
-        let info = window_from_properties(42, &properties);
-
-        assert_eq!(info.window_id, 42);
-        assert_eq!(info.title.as_deref(), Some("Ghostty"));
-        assert!(info.focused);
-        assert_eq!(info.client_type.as_deref(), Some("wayland"));
-        assert_eq!(info.bounds.unwrap().width, 1200);
     }
 }
