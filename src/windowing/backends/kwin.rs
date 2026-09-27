@@ -68,20 +68,20 @@ pub async fn activate_window(window_id: u64) -> Result<()> {
 }
 
 pub async fn move_window(window_id: u64, x: i32, y: i32) -> Result<String> {
-    let uuid = kwin_uuid_for_window_id(window_id)
+    let (uuid, frame) = kwin_frame_for_window_id(window_id)
         .await?
         .with_context(|| format!("No KWin window matched window_id {window_id} during move"))?;
-    call_kwin_move_script(&uuid, x, y).await
+    call_kwin_move_script(&uuid, x, y, frame.width, frame.height).await
 }
 
 pub async fn resize_window(window_id: u64, width: i32, height: i32) -> Result<String> {
     if width <= 0 || height <= 0 {
         bail!("KWin resize dimensions must be positive (received {width}x{height})");
     }
-    let uuid = kwin_uuid_for_window_id(window_id)
+    let (uuid, frame) = kwin_frame_for_window_id(window_id)
         .await?
         .with_context(|| format!("No KWin window matched window_id {window_id} during resize"))?;
-    call_kwin_resize_script(&uuid, width, height).await
+    call_kwin_resize_script(&uuid, width, height, frame.x, frame.y).await
 }
 
 async fn kwin_uuid_for_window_id(window_id: u64) -> Result<Option<String>> {
@@ -91,6 +91,23 @@ async fn kwin_uuid_for_window_id(window_id: u64) -> Result<Option<String>> {
         let uuid = window.kwin_uuid()?;
         (kwin_window_id_from_uuid(&uuid) == window_id).then_some(uuid)
     }))
+}
+
+async fn kwin_frame_for_window_id(window_id: u64) -> Result<Option<(String, KwinFrameGeometry)>> {
+    let json = call_kwin_window_script().await?;
+    let snapshot = parse_kwin_snapshot(&json)?;
+    let Some(window) = snapshot.windows.into_iter().find(|window| {
+        window
+            .kwin_uuid()
+            .is_some_and(|uuid| kwin_window_id_from_uuid(&uuid) == window_id)
+    }) else {
+        return Ok(None);
+    };
+    let uuid = window
+        .kwin_uuid()
+        .context("KWin target window did not include a usable uuid")?;
+    let frame = window.frame_geometry()?;
+    Ok(Some((uuid, frame)))
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,18 +139,39 @@ async fn call_kwin_activate_script(uuid: &str) -> Result<()> {
     }
 }
 
-async fn call_kwin_move_script(uuid: &str, x: i32, y: i32) -> Result<String> {
+async fn call_kwin_move_script(
+    uuid: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> Result<String> {
     let uuid = uuid.to_string();
     call_kwin_geometry_script(
         "move",
         move |service_name, callback_object_path, plugin_name| {
-            write_kwin_move_script(service_name, callback_object_path, plugin_name, &uuid, x, y)
+            write_kwin_move_script(
+                service_name,
+                callback_object_path,
+                plugin_name,
+                &uuid,
+                x,
+                y,
+                width,
+                height,
+            )
         },
     )
     .await
 }
 
-async fn call_kwin_resize_script(uuid: &str, width: i32, height: i32) -> Result<String> {
+async fn call_kwin_resize_script(
+    uuid: &str,
+    width: i32,
+    height: i32,
+    x: i32,
+    y: i32,
+) -> Result<String> {
     let uuid = uuid.to_string();
     call_kwin_geometry_script(
         "resize",
@@ -145,6 +183,8 @@ async fn call_kwin_resize_script(uuid: &str, width: i32, height: i32) -> Result<
                 &uuid,
                 width,
                 height,
+                x,
+                y,
             )
         },
     )
@@ -881,9 +921,19 @@ fn write_kwin_move_script(
     uuid: &str,
     x: i32,
     y: i32,
+    width: i32,
+    height: i32,
 ) -> Result<std::path::PathBuf> {
-    let script =
-        kwin_move_script_source(service_name, callback_object_path, plugin_name, uuid, x, y)?;
+    let script = kwin_move_script_source(
+        service_name,
+        callback_object_path,
+        plugin_name,
+        uuid,
+        x,
+        y,
+        width,
+        height,
+    )?;
     write_kwin_script_file(plugin_name, &script)
 }
 
@@ -894,6 +944,8 @@ fn write_kwin_resize_script(
     uuid: &str,
     width: i32,
     height: i32,
+    x: i32,
+    y: i32,
 ) -> Result<std::path::PathBuf> {
     let script = kwin_resize_script_source(
         service_name,
@@ -902,6 +954,8 @@ fn write_kwin_resize_script(
         uuid,
         width,
         height,
+        x,
+        y,
     )?;
     write_kwin_script_file(plugin_name, &script)
 }
@@ -913,13 +967,15 @@ fn kwin_move_script_source(
     uuid: &str,
     x: i32,
     y: i32,
+    width: i32,
+    height: i32,
 ) -> Result<String> {
     kwin_geometry_script_source(
         service_name,
         callback_object_path,
         plugin_name,
         uuid,
-        &format!("Qt.rect({x}, {y}, frame.width, frame.height)"),
+        &format!("Qt.rect({x}, {y}, {width}, {height})"),
         "move",
     )
 }
@@ -931,6 +987,8 @@ fn kwin_resize_script_source(
     uuid: &str,
     width: i32,
     height: i32,
+    x: i32,
+    y: i32,
 ) -> Result<String> {
     if width <= 0 || height <= 0 {
         bail!("KWin resize dimensions must be positive (received {width}x{height})");
@@ -940,7 +998,7 @@ fn kwin_resize_script_source(
         callback_object_path,
         plugin_name,
         uuid,
-        &format!("Qt.rect(frame.x, frame.y, {width}, {height})"),
+        &format!("Qt.rect({x}, {y}, {width}, {height})"),
         "resize",
     )
 }
@@ -1181,6 +1239,46 @@ impl KwinRawWindow {
             .or(self.internal_id.as_deref())
             .and_then(normalize_kwin_uuid)
     }
+
+    fn frame_geometry(&self) -> Result<KwinFrameGeometry> {
+        Ok(KwinFrameGeometry {
+            x: frame_geometry_integer(self.x.as_ref(), "x")?,
+            y: frame_geometry_integer(self.y.as_ref(), "y")?,
+            width: frame_geometry_dimension(self.width.as_ref(), "width")?,
+            height: frame_geometry_dimension(self.height.as_ref(), "height")?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KwinFrameGeometry {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+fn frame_geometry_integer(value: Option<&serde_json::Value>, field: &str) -> Result<i32> {
+    let value = value
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| {
+            value.is_finite()
+                && value.fract() == 0.0
+                && *value >= i32::MIN as f64
+                && *value <= i32::MAX as f64
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("invalid KWin frame geometry: {field} must be a finite integer")
+        })?;
+    Ok(value as i32)
+}
+
+fn frame_geometry_dimension(value: Option<&serde_json::Value>, field: &str) -> Result<i32> {
+    let value = frame_geometry_integer(value, field)?;
+    if value <= 0 {
+        bail!("invalid KWin frame geometry: {field} must be a positive integer");
+    }
+    Ok(value)
 }
 
 impl TryFrom<KwinRawWindow> for WindowInfo {
@@ -1459,9 +1557,9 @@ mod adapter_tests {
             "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
         );
         let move_script =
-            kwin_move_script_source(args.0, args.1, args.2, args.3, 120, 240).unwrap();
+            kwin_move_script_source(args.0, args.1, args.2, args.3, 120, 240, 800, 600).unwrap();
         let resize_script =
-            kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, 480).unwrap();
+            kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, 480, 10, 20).unwrap();
 
         for script in [&move_script, &resize_script] {
             assert!(script.contains(r#"var targetUuid = "b4dfacf8-a559-43c9-8b1f-ecd5cfd78359";"#));
@@ -1472,13 +1570,12 @@ mod adapter_tests {
             assert!(script.contains("ok: false"));
         }
 
-        assert!(move_script
-            .contains("window.frameGeometry = Qt.rect(120, 240, frame.width, frame.height)"));
+        assert!(move_script.contains("window.frameGeometry = Qt.rect(120, 240, 800, 600)"));
+        assert!(resize_script.contains("window.frameGeometry = Qt.rect(10, 20, 640, 480)"));
+        assert!(kwin_resize_script_source(args.0, args.1, args.2, args.3, 0, 480, 10, 20).is_err());
         assert!(
-            resize_script.contains("window.frameGeometry = Qt.rect(frame.x, frame.y, 640, 480)")
+            kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, -1, 10, 20).is_err()
         );
-        assert!(kwin_resize_script_source(args.0, args.1, args.2, args.3, 0, 480).is_err());
-        assert!(kwin_resize_script_source(args.0, args.1, args.2, args.3, 640, -1).is_err());
     }
 
     #[tokio::test]
@@ -1843,7 +1940,7 @@ pub(crate) mod transaction_tests {
     async fn move_result_from_registered_kwin_callback_is_returned_as_success() {
         let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":120,"y":240,"width":800,"height":600}"#;
         let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
-            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240).await
+            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240, 800, 600).await
         })
         .await;
 
@@ -1859,7 +1956,7 @@ pub(crate) mod transaction_tests {
     async fn resize_result_from_registered_kwin_callback_is_returned_as_success() {
         let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":10,"y":20,"width":640,"height":480}"#;
         let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
-            call_kwin_resize_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 640, 480).await
+            call_kwin_resize_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 640, 480, 10, 20).await
         })
         .await;
 
@@ -1887,14 +1984,94 @@ pub(crate) mod transaction_tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("No KWin window matched"));
+            .contains("No KWin window matched window_id"));
     }
 
     #[tokio::test]
-    async fn geometry_operation_returns_an_error_for_invalid_frame_geometry() {
+    async fn resize_returns_an_error_when_the_window_is_missing() {
+        let result = with_fake_kwin_responses(
+            vec![
+                r#"{"backend":"kwin","pluginName":"placeholder","windows":[{"uuid":"another-window","x":0,"y":0,"width":10,"height":10}]}"#.to_string(),
+            ],
+            || async {
+                resize_window(
+                    kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359"),
+                    640,
+                    480,
+                )
+                .await
+            },
+        )
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No KWin window matched window_id"));
+    }
+
+    #[tokio::test]
+    async fn move_rejects_missing_frame_geometry_before_loading_geometry_script() {
+        let snapshot = r#"{"backend":"kwin","pluginName":"placeholder","windows":[{"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","y":20,"width":800,"height":600}]}"#;
+        let result = with_fake_kwin_responses(vec![snapshot.to_string()], || async {
+            move_window(
+                kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359"),
+                120,
+                240,
+            )
+            .await
+        })
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid KWin frame geometry: x must be a finite integer"));
+    }
+
+    #[tokio::test]
+    async fn resize_rejects_wrong_type_frame_geometry_before_loading_geometry_script() {
+        let snapshot = r#"{"backend":"kwin","pluginName":"placeholder","windows":[{"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":10,"y":20,"width":"640","height":480}]}"#;
+        let result = with_fake_kwin_responses(vec![snapshot.to_string()], || async {
+            resize_window(
+                kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359"),
+                640,
+                480,
+            )
+            .await
+        })
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid KWin frame geometry: width must be a finite integer"));
+    }
+
+    #[tokio::test]
+    async fn resize_rejects_non_positive_snapshot_dimensions_before_loading_geometry_script() {
+        let snapshot = r#"{"backend":"kwin","pluginName":"placeholder","windows":[{"uuid":"b4dfacf8-a559-43c9-8b1f-ecd5cfd78359","x":10,"y":20,"width":640,"height":0}]}"#;
+        let result = with_fake_kwin_responses(vec![snapshot.to_string()], || async {
+            resize_window(
+                kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359"),
+                640,
+                480,
+            )
+            .await
+        })
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid KWin frame geometry: height must be a positive integer"));
+    }
+
+    #[tokio::test]
+    async fn geometry_operation_callback_error_is_returned() {
         let result_json = r#"{"backend":"kwin","pluginName":"placeholder","ok":false,"error":"invalid frame geometry"}"#;
         let result = with_fake_kwin_responses(vec![result_json.to_string()], || async {
-            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240).await
+            call_kwin_move_script("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359", 120, 240, 800, 600).await
         })
         .await;
 

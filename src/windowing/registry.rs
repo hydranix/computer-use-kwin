@@ -403,7 +403,7 @@ mod tests {
         let mut target = window(KWIN_BACKEND);
         target.window_id = 15_605_548_758_018_230_245;
         let windows_json = format!(
-            r#"{{"backend":"kwin","pluginName":"placeholder","windows":[{{"uuid":"{uuid}","caption":"Codex","normalWindow":true}}]}}"#
+            r#"{{"backend":"kwin","pluginName":"placeholder","windows":[{{"uuid":"{uuid}","caption":"Codex","normalWindow":true,"x":10,"y":20,"width":800,"height":600}}]}}"#
         );
         let move_result_json = format!(
             r#"{{"backend":"kwin","pluginName":"placeholder","ok":true,"uuid":"{uuid}","x":120,"y":240,"width":800,"height":600}}"#
