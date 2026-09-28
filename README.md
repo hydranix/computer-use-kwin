@@ -22,7 +22,9 @@ cargo build --release
 ./target/release/computer-use-kwin doctor | jq .readiness
 ```
 
-Build this fork from source for now; availability of its [`computer-use-kwin` crate](https://crates.io/crates/computer-use-kwin) and [`@hydranix/computer-use-kwin` npm package](https://www.npmjs.com/package/@hydranix/computer-use-kwin) has not been confirmed.
+Build this fork from source for now; its `computer-use-kwin` crate and
+`@hydranix/computer-use-kwin` npm package are not published until the first
+fork release.
 
 ## What this is
 
@@ -147,84 +149,20 @@ If you run on a desktop not covered above, or a covered backend does not come up
 
 ## Install
 
-### Option A — `./install.sh` from a clone
-
-Installs build dependencies on supported Debian/Ubuntu, Fedora/RHEL-like, or
-Arch-like systems; installs Rust if needed; builds the binary into
-`~/.local/bin`; optionally configures `ydotoold` as a systemd user service; and
-runs `doctor`. It does not configure toolkit accessibility for you.
+### Build from source
 
 ```bash
-git clone https://github.com/agent-sh/computer-use-linux
-cd computer-use-linux
-./install.sh
-computer-use-linux doctor | jq .readiness
+git clone https://github.com/hydranix/computer-use-kwin.git
+cd computer-use-kwin
+cargo build --release
+./target/release/computer-use-kwin doctor | jq .readiness
+install -Dm755 target/release/computer-use-kwin "$HOME/.local/bin/computer-use-kwin"
 ```
 
-`ydotool` is an optional input fallback; direct uinput supplies absolute
-pointer input. The installer skips automatic daemon setup on non-systemd hosts
-and prints manual `ydotoold` guidance. For an unrecognized distro, pass
-`--package-manager apt|dnf|pacman`; `--force-unknown-distro` auto-selects only
-when exactly one of those managers is available.
-
-### Option B — `cargo install` (Rust binary)
-
-Installs the Rust binary from crates.io. Ensure your system provides the KDE
-desktop portals and the GTK/AT-SPI accessibility prerequisites required by
-your applications. No project accessibility setup command is needed or
-provided.
-
-```bash
-cargo install computer-use-linux
-computer-use-linux doctor
-```
-
-For unreleased changes from `main`, install directly from Git:
-
-```bash
-cargo install --git https://github.com/agent-sh/computer-use-linux
-```
-
-Then, as needed:
-
-```bash
-sudo apt install at-spi2-core                 # plus your distro's GTK accessibility packages
-sudo apt install ydotool                      # optional input fallback
-systemctl --user enable --now ydotoold         # only when using ydotool
-```
-
-### Option C — npm wrapper (binary download)
-
-Good for users who already have Node.js and want a no-Rust install. The npm
-package downloads and verifies the matching Linux binary during install.
-
-```bash
-npm install -g @agent-sh/computer-use-linux
-computer-use-linux doctor
-```
-
-You still need the system-level GTK/AT-SPI prerequisites for your applications
-and a supported input path. Start `ydotoold` only when using ydotool.
-
-### Option D — prebuilt binaries
-
-Linux x86_64 / aarch64 builds are published with each tag. Each binary ships a `.sha256` next to it.
-
-- Latest release: <https://github.com/agent-sh/computer-use-linux/releases/latest>
-
-```bash
-target=x86_64-unknown-linux-gnu
-base=https://github.com/agent-sh/computer-use-linux/releases/latest/download
-asset="computer-use-linux-$target"
-curl -L -O "$base/$asset"
-curl -L -O "$base/$asset.sha256"
-sha256sum -c "$asset.sha256"
-install -m 0755 "$asset" "$HOME/.local/bin/computer-use-linux"
-```
-
-You still need KDE desktop portals and the system-level GTK/AT-SPI
-prerequisites required by your applications. Run `ydotoold` only when using
-that input fallback.
+This builds the `computer-use-kwin` binary in `target/release/`. The fork's
+`computer-use-kwin` crate, `@hydranix/computer-use-kwin` npm package, and
+prebuilt release assets are not available until its first release; use the
+source build above in the meantime.
 
 ## Wire it into your MCP host
 
@@ -479,14 +417,21 @@ Built on top of:
 
 ## Publishing
 
-Publishing is tag-driven from GitHub Actions. The repository needs these Actions secrets:
+Publishing the `computer-use-kwin` crate, the `@hydranix/computer-use-kwin`
+npm package, and release assets for `hydranix/computer-use-kwin` is planned to
+be tag-driven from GitHub Actions. When preparing the first fork release, the
+repository will need these Actions secrets:
 
 ```bash
-gh secret set CARGO_REGISTRY_TOKEN -R agent-sh/computer-use-linux
-gh secret set NPM_TOKEN -R agent-sh/computer-use-linux
+gh secret set CARGO_REGISTRY_TOKEN -R hydranix/computer-use-kwin
+gh secret set NPM_TOKEN -R hydranix/computer-use-kwin
 ```
 
-Then bump `Cargo.toml` and `package.json` together, update `CHANGELOG.md`, and push a `vX.Y.Z` tag. CI runs the full Rust and MCP safety gates, builds release assets for both architectures, publishes `computer-use-linux` to crates.io, and publishes the npm wrapper after the GitHub release binaries are available.
+Once configured, bump `Cargo.toml` and `package.json` together, update
+`CHANGELOG.md`, and push a `vX.Y.Z` tag. The release workflow is intended to
+run the Rust and MCP safety gates, build assets for both architectures, publish
+the `computer-use-kwin` crate to crates.io and the `@hydranix/computer-use-kwin`
+npm package, and attach the assets to the fork's GitHub release.
 
 ## License
 
