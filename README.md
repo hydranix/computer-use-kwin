@@ -209,11 +209,16 @@ Restart Claude Desktop. The tools should appear in the tools list.
 
 ### Pi Coding Agent
 
+From a source checkout, build and load the extension with:
+
 ```bash
-pi install npm:@agent-sh/computer-use-linux
+cargo build --locked
+COMPUTER_USE_KWIN_BIN="$PWD/target/debug/computer-use-kwin" \
+  pi -e "$PWD/pi/extension/index.ts"
 ```
 
-Restart Pi or run `/reload`. The package exposes one small loader initially;
+After publication, install it with `pi install npm:@hydranix/computer-use-kwin`.
+Restart Pi or run `/reload`. The extension exposes one small loader initially;
 the real tools keep their upstream schemas and are enabled only when Computer
 Use is needed:
 
