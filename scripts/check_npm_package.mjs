@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 
 const requiredFiles = [
+	"npm/bin/computer-use-kwin.js",
 	"pi/extension/index.ts",
 	"pi/extension/generated-tools.ts",
 	"pi/extension/mcp-client.bundle.cjs",
@@ -25,6 +26,12 @@ const pack = Array.isArray(metadata) ? metadata[0] : Object.values(metadata)[0];
 if (!pack || !Array.isArray(pack.files) || typeof pack.unpackedSize !== "number") {
 	throw new Error("npm pack returned unexpected package metadata");
 }
+const expectedPackageName = "@hydranix/computer-use-kwin";
+if (pack.name !== expectedPackageName) {
+	throw new Error(
+		`npm package name mismatch: expected "${expectedPackageName}", got "${pack.name}"`,
+	);
+}
 const paths = new Set(pack.files.map((file) => file.path));
 const missing = requiredFiles.filter((path) => !paths.has(path));
 if (missing.length > 0) {
@@ -37,6 +44,6 @@ if (pack.unpackedSize > maxUnpackedBytes) {
 }
 
 console.log(
-	`npm package OK: ${pack.files.length} files, ${pack.size} bytes packed, ` +
-		`${pack.unpackedSize} bytes unpacked`,
+	`npm package OK: ${pack.name}, ${pack.files.length} files, ${pack.size} bytes packed, ` +
+		`${pack.unpackedSize} bytes unpacked; required files: ${requiredFiles.join(", ")}`,
 );

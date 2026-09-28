@@ -5,15 +5,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const binaryName = `computer-use-linux-${process.platform}-${process.arch}`;
+const binaryName = `computer-use-kwin-${process.platform}-${process.arch}`;
 const bundledBinary = path.join(__dirname, binaryName);
-const binary = process.env.COMPUTER_USE_LINUX_BIN || bundledBinary;
+const binary = process.env.COMPUTER_USE_KWIN_BIN || bundledBinary;
 
 if (!fs.existsSync(binary)) {
   console.error(
     [
-      `computer-use-linux binary not found: ${binary}`,
-      'Reinstall the package, run `npm rebuild computer-use-linux`, or set COMPUTER_USE_LINUX_BIN.',
+      `computer-use-kwin binary not found: ${binary}`,
+      'Reinstall the package, run `npm rebuild @hydranix/computer-use-kwin`, or set COMPUTER_USE_KWIN_BIN.',
     ].join('\n')
   );
   process.exit(127);
@@ -32,7 +32,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 child.on('error', (error) => {
-  console.error(`failed to start computer-use-linux: ${error.message}`);
+  console.error(`failed to start computer-use-kwin: ${error.message}`);
   process.exit(127);
 });
 

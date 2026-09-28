@@ -34,7 +34,7 @@ create_fake_doctor() {
     local path="$1"
     printf '%s\n' \
         '#!/usr/bin/env bash' \
-        'printf '\''%s\n'\'' "${COMPUTER_USE_LINUX_TEST_DOCTOR_OUTPUT}"' \
+        'printf '\''%s\n'\'' "${COMPUTER_USE_KWIN_TEST_DOCTOR_OUTPUT}"' \
         >"${path}"
     chmod +x "${path}"
 }
@@ -42,9 +42,9 @@ create_fake_doctor() {
 run_fake_doctor() {
     local doctor_output="$1" hide_jq="${2:-0}" fake_dir status
     fake_dir="$(mktemp -d)"
-    INSTALL_PATH="${fake_dir}/computer-use-linux"
+    INSTALL_PATH="${fake_dir}/computer-use-kwin"
     create_fake_doctor "${INSTALL_PATH}"
-    export COMPUTER_USE_LINUX_TEST_DOCTOR_OUTPUT="${doctor_output}"
+    export COMPUTER_USE_KWIN_TEST_DOCTOR_OUTPUT="${doctor_output}"
     if [[ "${hide_jq}" -eq 1 ]]; then
         command() {
             if [[ "$1" == "-v" && "$2" == "jq" ]]; then return 1; fi
@@ -58,7 +58,7 @@ run_fake_doctor() {
 }
 
 test_artix_selects_pacman() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
     export XDG_SESSION_TYPE=x11
     export XDG_CURRENT_DESKTOP=unknown
 
@@ -72,7 +72,7 @@ test_artix_selects_pacman() (
 )
 
 test_unknown_distro_selects_only_available_manager() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
     export XDG_SESSION_TYPE=x11
     export XDG_CURRENT_DESKTOP=unknown
 
@@ -87,7 +87,7 @@ test_unknown_distro_selects_only_available_manager() (
 )
 
 test_skip_system_deps_needs_no_package_manager() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
     export XDG_SESSION_TYPE=x11
     export XDG_CURRENT_DESKTOP=unknown
 
@@ -103,7 +103,7 @@ test_skip_system_deps_needs_no_package_manager() (
 )
 
 test_skip_system_deps_allows_missing_override() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
     export XDG_SESSION_TYPE=x11
     export XDG_CURRENT_DESKTOP=unknown
 
@@ -119,7 +119,7 @@ test_skip_system_deps_allows_missing_override() (
 )
 
 test_system_deps_keep_atspi_without_x11_packages() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
     export XDG_SESSION_TYPE=x11
     export DISPLAY=:0
     unset WAYLAND_DISPLAY XDG_SESSION_ID
@@ -141,7 +141,7 @@ test_system_deps_keep_atspi_without_x11_packages() (
 )
 
 test_gnome_desktop_does_not_install_gnome_shell() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
+    export COMPUTER_USE_KWIN_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
     export XDG_CURRENT_DESKTOP=GNOME
     unset XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY XDG_SESSION_ID
 
@@ -167,7 +167,7 @@ test_gnome_desktop_does_not_install_gnome_shell() (
 test_installer_help_omits_removed_setup() (
     local output
     output="$(bash "${INSTALLER}" --help)" || return 1
-    assert_contains "${output}" "computer-use-linux" || return 1
+    assert_contains "${output}" "computer-use-kwin" || return 1
     assert_not_contains "${output}" "COSMIC" || return 1
     assert_not_contains "${output}" "GNOME" || return 1
     assert_not_contains "${output}" "gsettings" || return 1
@@ -183,15 +183,15 @@ test_build_installs_only_main_binary() (
     trap 'rm -rf -- "${fixture_dir}"' EXIT
     SCRIPT_DIR="${fixture_dir}"
     INSTALL_DIR="${fixture_dir}/home/.local/bin"
-    INSTALL_PATH="${INSTALL_DIR}/computer-use-linux"
+    INSTALL_PATH="${INSTALL_DIR}/computer-use-kwin"
     mkdir -p "${SCRIPT_DIR}/target/release"
-    printf 'main binary\n' >"${SCRIPT_DIR}/target/release/computer-use-linux"
-    chmod +x "${SCRIPT_DIR}/target/release/computer-use-linux"
+    printf 'main binary\n' >"${SCRIPT_DIR}/target/release/computer-use-kwin"
+    chmod +x "${SCRIPT_DIR}/target/release/computer-use-kwin"
     SKIP_BUILD=1
 
     build_and_install >/dev/null || return 1
     [[ -x "${INSTALL_PATH}" ]] || return 1
-    [[ ! -e "${INSTALL_DIR}/computer-use-linux-cosmic" ]]
+    [[ ! -e "${INSTALL_DIR}/computer-use-kwin-cosmic" ]]
 )
 
 test_non_systemd_host_gets_manual_guidance() (
@@ -199,7 +199,7 @@ test_non_systemd_host_gets_manual_guidance() (
     local uinput
     uinput="$(mktemp)"
     trap 'rm -f "${uinput}"' EXIT
-    export COMPUTER_USE_LINUX_UINPUT_DEVICE="${uinput}"
+    export COMPUTER_USE_KWIN_UINPUT_DEVICE="${uinput}"
 
     # shellcheck source=../install.sh
     source "${INSTALLER}"
@@ -219,7 +219,7 @@ test_non_systemd_host_requires_uinput_access() (
     uinput="$(mktemp)"
     chmod 000 "${uinput}"
     trap 'chmod 600 "${uinput}"; rm -f "${uinput}"' EXIT
-    export COMPUTER_USE_LINUX_UINPUT_DEVICE="${uinput}"
+    export COMPUTER_USE_KWIN_UINPUT_DEVICE="${uinput}"
 
     # shellcheck source=../install.sh
     source "${INSTALLER}"

@@ -1,5 +1,5 @@
 {
-  "name": "@agent-sh/computer-use-linux",
+  "name": "@hydranix/computer-use-kwin",
   "version": "0.7.4",
   "description": "Linux desktop-control MCP server for KDE Plasma 6 Wayland: AT-SPI accessibility, desktop portal capture and input, and KWin window targeting.",
   "license": "MIT",
@@ -30,7 +30,7 @@
     "arm64"
   ],
   "bin": {
-    "computer-use-linux": "npm/bin/computer-use-linux.js"
+    "computer-use-kwin": "npm/bin/computer-use-kwin.js"
   },
   "files": [
     "LICENSE",
@@ -38,7 +38,7 @@
     "skills/computer-use-linux/SKILL.md",
     "skills/computer-use-linux/references/",
     "npm/README.md",
-    "npm/bin/computer-use-linux.js",
+    "npm/bin/computer-use-kwin.js",
     "npm/install.js",
     "pi/extension/index.ts",
     "pi/extension/generated-tools.ts",
@@ -56,7 +56,7 @@
     "pack:check": "node scripts/check_npm_package.mjs",
     "test:pi": "npm test --prefix pi",
     "typecheck:pi": "npm run typecheck --prefix pi",
-    "test:wrapper": "node npm/bin/computer-use-linux.js --help"
+    "test:wrapper": "node npm/bin/computer-use-kwin.js --help"
   },
   "engines": {
     "node": ">=18"

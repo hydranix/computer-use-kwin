@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# install.sh — bootstrap the computer-use-linux MCP server on a Linux box.
+# install.sh — bootstrap the computer-use-kwin MCP server on a Linux box.
 #
 # This script takes a fresh checkout from `git clone` to a working
-# `computer-use-linux mcp` binary in PATH plus all the system-side
+# `computer-use-kwin mcp` binary in PATH plus all the system-side
 # prerequisites (AT-SPI, desktop portals, optional ydotoold).
 #
 # Each step is idempotent and individually skippable via flags.
@@ -17,9 +17,9 @@ IFS=$'\n\t'
 # -----------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-OS_RELEASE_FILE="${COMPUTER_USE_LINUX_OS_RELEASE_FILE:-/etc/os-release}"
-UINPUT_DEVICE="${COMPUTER_USE_LINUX_UINPUT_DEVICE:-/dev/uinput}"
-BIN_NAME="computer-use-linux"
+OS_RELEASE_FILE="${COMPUTER_USE_KWIN_OS_RELEASE_FILE:-/etc/os-release}"
+UINPUT_DEVICE="${COMPUTER_USE_KWIN_UINPUT_DEVICE:-/dev/uinput}"
+BIN_NAME="computer-use-kwin"
 INSTALL_DIR="${HOME}/.local/bin"
 INSTALL_PATH="${INSTALL_DIR}/${BIN_NAME}"
 
@@ -64,7 +64,7 @@ PACKAGE_MANAGER_OVERRIDE=""
 
 usage() {
     cat <<EOF
-${C_BOLD}install.sh${C_RESET} — provision computer-use-linux on this machine.
+${C_BOLD}install.sh${C_RESET} — provision computer-use-kwin on this machine.
 
 Usage: ./install.sh [flags]
 
@@ -518,7 +518,7 @@ run_doctor() {
 # -----------------------------------------------------------------------------
 
 main() {
-    printf '%scomputer-use-linux installer%s — repo: %s\n' "${C_BOLD}" "${C_RESET}" "${SCRIPT_DIR}"
+    printf '%scomputer-use-kwin installer%s — repo: %s\n' "${C_BOLD}" "${C_RESET}" "${SCRIPT_DIR}"
 
     detect_distro
     install_system_deps  || record_failure "system deps"

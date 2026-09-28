@@ -15,10 +15,10 @@ const archToTarget = {
 };
 
 const binDir = path.join(__dirname, 'bin');
-const binaryPath = path.join(binDir, `computer-use-linux-${process.platform}-${process.arch}`);
+const binaryPath = path.join(binDir, `computer-use-kwin-${process.platform}-${process.arch}`);
 
 function fail(message) {
-  console.error(`[computer-use-linux] ${message}`);
+  console.error(`[computer-use-kwin] ${message}`);
   process.exit(1);
 }
 
@@ -26,7 +26,7 @@ function copyLocalBinary(source) {
   fs.mkdirSync(binDir, { recursive: true });
   fs.copyFileSync(source, binaryPath);
   fs.chmodSync(binaryPath, 0o755);
-  console.log(`[computer-use-linux] installed local binary from ${source}`);
+  console.log(`[computer-use-kwin] installed local binary from ${source}`);
 }
 
 function download(url, destination, redirects = 5) {
@@ -74,13 +74,13 @@ function sha256File(filePath) {
 }
 
 async function main() {
-  if (process.env.COMPUTER_USE_LINUX_SKIP_DOWNLOAD === '1') {
-    console.log('[computer-use-linux] skipping binary download');
+  if (process.env.COMPUTER_USE_KWIN_SKIP_DOWNLOAD === '1') {
+    console.log('[computer-use-kwin] skipping binary download');
     return;
   }
 
-  if (process.env.COMPUTER_USE_LINUX_LOCAL_BINARY) {
-    copyLocalBinary(process.env.COMPUTER_USE_LINUX_LOCAL_BINARY);
+  if (process.env.COMPUTER_USE_KWIN_LOCAL_BINARY) {
+    copyLocalBinary(process.env.COMPUTER_USE_KWIN_LOCAL_BINARY);
     return;
   }
 
@@ -93,16 +93,16 @@ async function main() {
     fail(`unsupported CPU architecture: ${process.arch}. Supported: x64, arm64.`);
   }
 
-  const asset = `computer-use-linux-${targetArch}-unknown-linux-gnu`;
+  const asset = `computer-use-kwin-${targetArch}-unknown-linux-gnu`;
   const baseUrl =
-    process.env.COMPUTER_USE_LINUX_DOWNLOAD_BASE ||
-    `https://github.com/agent-sh/computer-use-linux/releases/download/v${pkg.version}`;
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'computer-use-linux-'));
+    process.env.COMPUTER_USE_KWIN_DOWNLOAD_BASE ||
+    `https://github.com/hydranix/computer-use-kwin/releases/download/v${pkg.version}`;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'computer-use-kwin-'));
   const tmpBinary = path.join(tmpDir, asset);
   const tmpSha = path.join(tmpDir, `${asset}.sha256`);
 
   try {
-    console.log(`[computer-use-linux] downloading ${asset} from ${baseUrl}`);
+    console.log(`[computer-use-kwin] downloading ${asset} from ${baseUrl}`);
     await download(`${baseUrl}/${asset}`, tmpBinary);
     await download(`${baseUrl}/${asset}.sha256`, tmpSha);
 
@@ -115,7 +115,7 @@ async function main() {
     fs.mkdirSync(binDir, { recursive: true });
     fs.copyFileSync(tmpBinary, binaryPath);
     fs.chmodSync(binaryPath, 0o755);
-    console.log(`[computer-use-linux] installed ${asset}`);
+    console.log(`[computer-use-kwin] installed ${asset}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

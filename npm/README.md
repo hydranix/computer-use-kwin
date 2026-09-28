@@ -1,12 +1,12 @@
-# computer-use-linux
+# computer-use-kwin
 
-NPM wrapper for the `computer-use-linux` MCP server, published as
-[`@agent-sh/computer-use-linux`](https://www.npmjs.com/package/@agent-sh/computer-use-linux).
+NPM wrapper for the `computer-use-kwin` MCP server, packaged as
+[`@hydranix/computer-use-kwin`](https://www.npmjs.com/package/@hydranix/computer-use-kwin).
 This build focuses on KDE Plasma 6 on Wayland.
 
 ```bash
-npm install -g @agent-sh/computer-use-linux
-computer-use-linux doctor
+npm install -g @hydranix/computer-use-kwin
+computer-use-kwin doctor
 ```
 
 The server uses XDG desktop portals for capture and RemoteDesktop input,
@@ -29,14 +29,14 @@ clipped target-window screenshot crop origin and divide preview coordinates by
 screenshot `scale`. A window target is required.
 
 For an optional MCP completion notification, set
-`COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1` in the server environment and have
+`COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE=1` in the server environment and have
 the agent call `complete_interaction` after its desktop work. `notify-send`
 must be installed with an available desktop notification service. The cue is
 best effort and does not provide exclusive desktop ownership. It is available
 only to directly spawned MCP hosts; the native Pi extension does not forward
 the flag or include the tool in its catalog.
 
-On Wayland, set `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` in the server
+On Wayland, set `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP=1` in the server
 environment to ask a version 2 or newer RemoteDesktop portal to reuse its
 single-use restore tokens across processes. The first dialog still appears;
 leave the variable unset to request access for each new process. The repository
@@ -46,8 +46,8 @@ The generated Hermes config should look like this:
 
 ```yaml
 mcp_servers:
-  computer-use-linux:
-    command: computer-use-linux
+  computer-use-kwin:
+    command: computer-use-kwin
     args: ["mcp"]
     timeout: 120
     connect_timeout: 30
@@ -58,10 +58,10 @@ GitHub release for this package version and verifies the `.sha256` asset
 before installing it.
 
 When installed through Pi, the package supplies native, dynamically loaded
-`computer_use_linux_*` tools. No separate MCP adapter or manual MCP
+`computer_use_kwin_*` tools. No separate MCP adapter or manual MCP
 configuration is required. Native tools require Pi 0.84.4 or newer; the
 standalone CLI wrapper retains Node.js 18 support.
 
 If you already built or installed the binary yourself, set
-`COMPUTER_USE_LINUX_BIN=/path/to/computer-use-linux` to make the wrapper use
+`COMPUTER_USE_KWIN_BIN=/path/to/computer-use-kwin` to make the wrapper use
 that executable instead.
