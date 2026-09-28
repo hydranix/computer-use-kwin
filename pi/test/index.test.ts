@@ -135,6 +135,24 @@ describe("native Pi extension", () => {
 		}
 	});
 
+	it("does not resolve removed setup tooling from a capability query", async () => {
+		const harness = load();
+		await harness.emit("session_start");
+		const loader = harness.tools.get("computer_use_linux_tools")!;
+
+		const result = await loader.execute(
+			"loader",
+			{ query: "setup" },
+			undefined,
+			undefined,
+			{} as never,
+		);
+
+		expect(result.details).not.toMatchObject({
+			matches: expect.arrayContaining(["doctor"]),
+		});
+	});
+
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "computer-use-linux-pi-test-"));
 		vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
@@ -401,6 +419,12 @@ describe("native Pi extension", () => {
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD", "1");
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD", "1");
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER", "1");
+		vi.stubEnv("HYPRLAND_INSTANCE_SIGNATURE", "hyprland");
+		vi.stubEnv("I3SOCK", "/run/i3.sock");
+		vi.stubEnv("SWAYSOCK", "/run/sway.sock");
+		vi.stubEnv("GSETTINGS_SCHEMA_DIR", "/usr/share/glib-2.0/schemas");
+		vi.stubEnv("GIO_EXTRA_MODULES", "/usr/lib/gio/modules");
+		vi.stubEnv("GI_TYPELIB_PATH", "/usr/lib/girepository-1.0");
 		vi.resetModules();
 		const { createComputerUseLinuxExtension } = await import(
 			"../extension/index.ts"
@@ -423,6 +447,16 @@ describe("native Pi extension", () => {
 		expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(
 			"COMPUTER_USE_LINUX_COSMIC_HELPER",
 		);
+		for (const key of [
+			"HYPRLAND_INSTANCE_SIGNATURE",
+			"I3SOCK",
+			"SWAYSOCK",
+			"GSETTINGS_SCHEMA_DIR",
+			"GIO_EXTRA_MODULES",
+			"GI_TYPELIB_PATH",
+		]) {
+			expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(key);
+		}
 		for (const key of [
 			"COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD",
 			"COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER",
