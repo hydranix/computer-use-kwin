@@ -1,6 +1,6 @@
 ---
 name: computer-use-linux
-description: "Linux desktop observation and control via native Pi tools or the computer-use-linux MCP server: accessibility trees, screenshots, window targeting, and input synthesis (click, type, scroll)."
+description: "Linux desktop observation and control for KDE Plasma 6 on Wayland via native Pi tools or the computer-use-linux MCP server."
 author: agent-sh
 license: MIT
 platforms: [linux]
@@ -9,22 +9,11 @@ compatibility: "Native Pi tools require Pi 0.84.4+ and Node.js 22.19+; the stand
 
 # computer-use-linux
 
-Use `computer-use-linux` when an agent needs to observe or operate a local Linux desktop: inspect the accessibility tree, list/focus windows, take screenshots, click, scroll, type, press keys, or invoke AT-SPI actions.
-
-## When to Use
-
-Use this skill when:
-
-- The user wants the agent to control a Linux GUI app.
-- You need desktop state from AT-SPI, screenshots, or compositor window metadata.
-- You are configuring the `computer-use-linux` MCP server for your agent.
-- A desktop action needs target-aware input instead of blind shell commands.
-
-Do not use this for remote browsers, websites, or headless automation when a browser-specific tool is available. Do not assume desktop actions are safe just because the MCP connection works.
+Use `computer-use-linux` to observe or operate a KDE Plasma 6 Wayland desktop:
+read application accessibility state, take screenshots, inspect and control
+windows, click, scroll, type, press keys, or invoke AT-SPI actions.
 
 ## Install
-
-Pick the install that matches how you will run this skill. You can use both.
 
 ### Pi native tools
 
@@ -33,14 +22,9 @@ pi install npm:@agent-sh/computer-use-linux
 ```
 
 This enables Pi's `computer_use_linux_*` tools. It does not put
-`computer-use-linux` on `PATH`. Shell commands in this skill (`doctor`,
-`setup`, `setup-window-targeting`, `guard-accessibility`, the MCP `command`
-config, and Verification) need the CLI install below.
+`computer-use-linux` on `PATH`; shell commands below need the CLI install.
 
 ### Shell CLI / MCP server
-
-Use this when you need `computer-use-linux` on `PATH` for the commands in this
-skill.
 
 ```bash
 npm install -g @agent-sh/computer-use-linux
@@ -54,46 +38,28 @@ cargo install computer-use-linux
 computer-use-linux doctor | jq .readiness
 ```
 
-If `doctor` reports missing input or accessibility support, run:
+Provide the system-level GTK/AT-SPI prerequisites required by your applications.
+There is no application accessibility setup command. XDG portals provide
+capture and RemoteDesktop input; allow the requested portal access when
+prompted. If using ydotool, run `ydotoold` as a per-user service:
 
 ```bash
-computer-use-linux setup
-computer-use-linux setup-window-targeting
-computer-use-linux doctor | jq .readiness
+systemctl --user enable --now ydotoold
 ```
 
-If `doctor` selects ydotool as the input backend, also enable its per-user daemon with `systemctl --user enable --now ydotoold`. Direct uinput, X11 xdotool, and RemoteDesktop portal input do not require `ydotoold`.
-
-On GNOME Wayland, log out and back in after `setup-window-targeting` if the GNOME Shell extension was newly installed.
+Direct uinput provides an absolute-pointer fallback and does not require
+`ydotoold`. KWin scripting is the sole window-management backend for discovery,
+focus, activation, move, and resize operations.
 
 For MCP hosts with `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1`, call the optional
 `complete_interaction` tool once after finishing desktop interaction. A skipped
 cue is not a task failure. This notification does not guarantee exclusive
 desktop ownership or that other clients have stopped sending input.
-This applies only to directly spawned MCP hosts, not the native Pi extension.
+It applies only to directly spawned MCP hosts, not the native Pi extension.
 
-`setup_accessibility` verifies the saved GNOME `toolkit-accessibility` key
-separately from runtime AT-SPI. Inspect its warning and readback before assuming
-new apps can expose trees. Other accessibility tools may change the key later;
-setup does not hold it enabled continuously.
+## Configure your agent
 
-### Optional foreground accessibility guard
-
-Skip unless: the user explicitly wants GNOME's saved `toolkit-accessibility`
-setting kept enabled while desktop automation runs.
-
-Run `computer-use-linux guard-accessibility` in a foreground terminal. It
-registers a passive AT-SPI window-activation listener and watches/reasserts the
-saved key with readback. The setting affects all apps for the current user.
-`mcp`, setup, and `get_app_state` never start this guard automatically.
-Stop with Ctrl-C or SIGTERM before intentionally disabling accessibility.
-Stopping ends writes and removes its listener without disabling other clients
-or restoring a previous saved value. Apps launched during a reset/reassertion
-race may still need restarting; do not claim a complete GNOME toggle fix.
-
-## Configure Your Agent
-
-The `computer-use-linux` binary is an MCP server. Configure it as a stdio MCP server in your agent of choice:
+Configure the binary as a stdio MCP server:
 
 ```json
 {
@@ -102,8 +68,10 @@ The `computer-use-linux` binary is an MCP server. Configure it as a stdio MCP se
 }
 ```
 
-If the binary is not on `PATH`, use the absolute path (typically `~/.local/bin/computer-use-linux` or the npm global bin directory).
-Pi native tools skip this MCP `command` config; see [Pi setup](references/pi-setup.md).
+If the binary is not on `PATH`, use its absolute path (typically
+`~/.local/bin/computer-use-linux` or the npm global bin directory). Pi native
+tools do not need this MCP configuration; see
+[Pi setup](references/pi-setup.md).
 
 ### Host-specific guides
 
@@ -112,47 +80,63 @@ Pi native tools skip this MCP `command` config; see [Pi setup](references/pi-set
 
 ## Procedure
 
-1. In Pi, call `computer_use_linux_tools` with the exact tools or capability you need. Enabled tools use the `computer_use_linux_<name>` prefix, appear starting on the next model turn, and remain active for the session.
-2. Begin every desktop-control turn with `get_app_state`, scoped to the app you are working in: pass `app_name_or_bundle_identifier` or a window target (`window_id`, `pid`, `app_id`, `wm_class`, `title`). Without a target the result is the whole desktop AT-SPI tree, `tree_scoped` is `false`, and `message` warns; that can flood context. Use `include_screenshot: false` when the accessibility tree is sufficient. If `accessibility_tree_truncated` is `true`, the tree is incomplete: scope to a narrower target and raise `max_nodes` or `max_depth` (hard caps 2000 and 64) rather than lowering them. The compact readiness block identifies missing setup.
-3. Use `doctor` only when you need the full diagnostic report.
-4. If `can_build_accessibility_tree` is false, run `setup_accessibility` and restart the target app.
-5. If `can_query_windows` is false on GNOME Wayland, run `setup_window_targeting` and ask the user to log out and back in if setup says the shell extension needs a reload.
-6. Before targeted input, call `list_windows` or `focused_window` and verify the intended window by title, app id, pid, or wm class.
-7. Prefer semantic targeting from `get_app_state`: use element indices or role/name/text/states selectors.
-8. Use coordinates only when the UI surface has no useful accessibility tree.
-9. For text input, prefer `type_text` with a target selector (`window_id`, `pid`, `app_id`, `wm_class`, `title`, `tty`, `terminal_pid`, `terminal_command`, or `terminal_cwd`) rather than relying on current focus.
-10. After mutating actions, re-check state with `get_app_state`, `focused_window`, or an app-specific readback.
+1. In Pi, call `computer_use_linux_tools` with the exact tools or capability you
+   need. Enabled tools use the `computer_use_linux_<name>` prefix, appear
+   starting on the next model turn, and remain active for the session.
+2. Begin each desktop-control turn with `get_app_state`, scoped to the app you
+   are working in. Pass `app_name_or_bundle_identifier` or a window target
+   (`window_id`, `pid`, `app_id`, `wm_class`, `title`). Without a target, the
+   whole desktop AT-SPI tree is returned and may flood context. Use
+   `include_screenshot: false` when the tree is sufficient. If
+   `accessibility_tree_truncated` is true, narrow the target and raise
+   `max_nodes` or `max_depth` rather than lowering them.
+3. Use `doctor` when you need the full diagnostic report.
+4. If `can_build_accessibility_tree` is false, check system-level GTK/AT-SPI
+   prerequisites and restart the target app if needed.
+5. Before targeted input, call `list_windows` or `focused_window` and verify
+   the intended window by title, app id, pid, or wm class.
+6. Prefer semantic targeting from `get_app_state`: use element indices or
+   role/name/text/states selectors.
+7. Use coordinates only when the UI surface has no useful accessibility tree.
+8. For text input, prefer `type_text` with a target selector
+   (`window_id`, `pid`, `app_id`, `wm_class`, `title`, `tty`,
+   `terminal_pid`, `terminal_command`, or `terminal_cwd`) rather than relying
+   on current focus.
+9. After mutating actions, re-check state with `get_app_state`,
+   `focused_window`, or app-specific readback.
 
 Plain left element/index/selector `click` prefers native AT-SPI `click`,
-`press`, or `toggle` over toolkit bounds, avoiding coordinate
-conversion when available. This preference does not replace a coordinate click
-with an arbitrary action name. Explicit `x`/`y`, right clicks, and double/multiple
-clicks retain pointer semantics.
-Use `perform_action` explicitly for entry `activate` or slider `jump`; `click`
-never substitutes those actions, including when bounds are unavailable.
+`press`, or `toggle` over toolkit bounds when available. Use `perform_action`
+explicitly for `activate` or `jump`; `click` never substitutes those actions.
+Explicit `x`/`y`, right clicks, and double/multiple clicks retain pointer
+semantics.
 
 ### Screenshot-relative coordinates
 
-Skip unless: a coordinate `click` or `scroll` uses `relative: true`.
-
-Select a target window and use its clipped screenshot crop origin. Divide
-preview `x`/`y` by screenshot `scale` first. Widget-local and raw GDK surface
-coordinates are not interchangeable with that origin; missing window targets
-are rejected. For calibration, use the repository's
-`examples/coordinate_probe.py`: select the green square from the screenshot
-and require a delivered-event `hit: true`. Do not pass widget-local `(85, 85)`
-directly to a window-relative click.
+For a coordinate `click` or `scroll` with `relative: true`, select a target
+window and use its clipped screenshot crop origin. Divide preview `x`/`y` by
+the screenshot `scale` first. Widget-local coordinates are not interchangeable
+with that origin; missing window targets are rejected. For calibration, use
+the repository's `examples/coordinate_probe.py` and require its delivered
+event to report `hit: true`.
 
 ## Pitfalls
 
-- Already-running GTK, Qt, and Electron apps may need a restart after AT-SPI is enabled.
-- GNOME may show a portal prompt on the first screenshot or `get_app_state` call with screenshots enabled.
-- Desktop input is stateful. Avoid concurrent tool calls against this MCP server.
-- Pi serializes the native Computer Use tools and keeps one process for the session. If that process exits, do not replay an ambiguous mutating call; obtain a fresh `get_app_state` before another element-based action.
-- `click`, `drag`, `press_key`, `type_text`, `perform_action`, and `set_value` can change real application state.
-- When ydotool is selected, `ydotoold` should run as a per-user service with its socket under `/run/user/$UID`, not as a system-wide service.
-- The optional ydotool backend requires version 1.0.3 or newer; `doctor` rejects older or semantically incompatible CLIs even when `ydotoold` is running.
-- On COSMIC, the standard npm, Cargo, and install-script paths install the `computer-use-linux-cosmic` helper automatically. Manual binary installs must copy both binaries.
+- Running GTK, Qt, and Electron apps may need restarting after accessibility
+  prerequisites are changed.
+- The first screenshot or `get_app_state` call with screenshots enabled may
+  prompt for portal access.
+- Desktop input is stateful. Avoid concurrent tool calls against this MCP
+  server.
+- Pi serializes the native Computer Use tools and keeps one process for the
+  session. If that process exits, do not replay an ambiguous mutating call;
+  obtain a fresh `get_app_state` first.
+- `click`, `drag`, `press_key`, `type_text`, `perform_action`, and `set_value`
+  can change real application state.
+- When ydotool is selected, `ydotoold` should run as a per-user service with
+  its socket under `/run/user/$UID`, not as a system-wide service.
+- The optional ydotool backend requires version 1.0.3 or newer; `doctor`
+  rejects older or semantically incompatible CLIs even when `ydotoold` runs.
 
 ## Verification
 
@@ -160,19 +144,9 @@ Pi-only installs: enable and call `computer_use_linux_doctor` as in
 [Pi setup](references/pi-setup.md). Shell `computer-use-linux doctor` needs
 the CLI on `PATH`.
 
-Run:
-
 ```bash
 computer-use-linux doctor | jq .readiness
 ```
 
-Ready output should have:
-
-- `can_register_mcp_tools: true`
-- `can_build_accessibility_tree: true`
-- `can_query_windows: true`
-- `can_send_development_input: true`
-- `can_capture_screenshots: true`
-- `blockers: []`
-
-Then test with your agent by calling the `doctor` tool or asking the agent to list desktop windows.
+Check that the readiness report lists the needed capabilities without
+blockers, then call `list_windows` to inspect the active desktop session.

@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>computer-use-linux</h1>
-  <p><strong>Control a real Linux desktop from any MCP host.</strong></p>
+  <h1>computer-use-linux for KDE Plasma 6</h1>
+  <p><strong>Control a KDE Plasma 6 Wayland desktop from an MCP host.</strong></p>
   <p>
     <a href="https://github.com/agent-sh/computer-use-linux/actions/workflows/ci.yml"><img src="https://github.com/agent-sh/computer-use-linux/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://crates.io/crates/computer-use-linux"><img src="https://img.shields.io/crates/v/computer-use-linux.svg" alt="crates.io"></a>
@@ -11,7 +11,9 @@
 
 > ⚡ Running this agent 24/7? [**tiyuvta inference**](https://inference.tiyuvta.ai) — hosted LLM inference built for always-on agents, OpenAI/Anthropic-compatible APIs.
 
-`computer-use-linux` reads accessibility trees, takes screenshots, and drives clicks, scrolls, and keystrokes across GNOME, KDE/KWin, Hyprland, i3, and COSMIC — Wayland-first, X11 best-effort.
+`computer-use-linux` is focused on KDE Plasma 6 on Wayland. It reads shared
+AT-SPI accessibility trees, captures through XDG desktop portals, and controls
+windows through KWin scripting.
 
 ```bash
 npm install -g @agent-sh/computer-use-linux
@@ -22,14 +24,27 @@ The Rust crate is published as [`computer-use-linux`](https://crates.io/crates/c
 
 ## What this is
 
-`computer-use-linux` is a Rust MCP server and CLI for Linux desktop control. The crate ships the main `computer-use-linux` binary plus a small `computer-use-linux-cosmic` helper used only for COSMIC Wayland window management. Any MCP host — Codex Desktop's Linux build, Claude Desktop, [Hermes Agent](https://github.com/NousResearch/hermes-agent), or your own client — can spawn it and gain full control of the local Linux desktop: read accessibility trees, list and focus windows, take screenshots, click, drag, scroll, type, and invoke semantic accessibility actions.
+`computer-use-linux` is a Rust MCP server and CLI for KDE Plasma 6 on Wayland.
+Any MCP host — Codex Desktop's Linux build, Claude Desktop, [Hermes
+Agent](https://github.com/NousResearch/hermes-agent), or your own client — can
+spawn it to read accessibility trees, list and focus windows, take screenshots,
+click, drag, scroll, type, and invoke semantic accessibility actions.
 
-Most computer-use MCP servers are macOS-only (they lean on AppKit, AXUIElement, CGEvent). The few that target Linux either drive `xdotool` against an X11 root window or shell out to OCR over screenshots. Four things set this one apart:
+The build is scoped to KDE Plasma 6 Wayland and uses its shared desktop
+services:
 
-- **Wayland actually works.** Pointer actions can use the `org.freedesktop.portal.RemoteDesktop` interface on Wayland, with `ydotool` / `ydotoold` (uinput) as the deterministic fallback. Literal text prefers `wtype` on compatible Wayland compositors when portal keyboard input is unavailable, preserving Unicode and the active layout before falling back to ydotool. Screenshots use the GNOME Shell DBus screenshot method when present, `org.freedesktop.portal.Screenshot` otherwise, then on a native X11 session a root-window `GetImage` (device pixels, no toolkit scaling), and finally spawn `gnome-screenshot` for background/systemd contexts where the DBus paths are denied.
-- **Window targeting is compositor-aware.** The window registry tries GNOME Shell extension, GNOME Shell Introspect, COSMIC Wayland helper, KWin DBus scripting, Hyprland `hyprctl`, i3 IPC, and generic X11/EWMH in order, then reports exactly which backend won or why each backend failed.
-- **Semantic selectors, not pixel coordinates.** Tools like `click`, `perform_action`, and `set_value` accept `role` / `name` / `text` / `states` selectors backed by AT-SPI. Pixel coordinates remain available as a fallback for rendering-only surfaces (canvas, games, X clients without ATK).
-- **One JSON readiness report.** `computer-use-linux doctor` returns a structured document covering platform, portals, AT-SPI, windowing, input, and a `readiness` summary with explicit blockers and a recommended next step. MCP hosts can render or surface that to the user without parsing prose.
+- **Portal capture and input.** XDG desktop portals provide screenshots and
+  RemoteDesktop input when available and authorized.
+- **Wayland input fallbacks.** Pointer input can use `ydotool` or a direct
+  uinput absolute-pointer device. Text entry uses KDE clipboard typing, with
+  portal and ydotool input paths available as appropriate.
+- **KWin window management.** KWin scripting lists, focuses, activates, moves,
+  and resizes windows; it is the sole window-management backend.
+- **Shared AT-SPI state.** Semantic selectors and app state use the session's
+  shared accessibility services; system-level GTK/AT-SPI prerequisites are
+  configured outside this application.
+- **One JSON readiness report.** `computer-use-linux doctor` reports portal,
+  AT-SPI, windowing, and input readiness with explicit blockers.
 
 The crate was extracted from [`codex-desktop-linux`](https://github.com/avifenesh/codex-desktop-linux) (the Linux distribution of Codex Desktop), which still bundles this binary as a built-in plugin. This standalone repo is the upstream.
 
@@ -39,14 +54,12 @@ MCP tools exposed by the server:
 
 **Diagnostics**
 
-- `doctor` — single-shot JSON readiness report (platform, portals, accessibility, windowing, input, readiness summary, and a capability map of available backends)
-- `setup_accessibility` — enables GNOME's `org.gnome.desktop.interface toolkit-accessibility` setting so toolkit apps expose AT-SPI trees
-- `setup_window_targeting` — installs and enables the bundled GNOME Shell extension when `org.gnome.Shell.Introspect` is locked down
+- `doctor` — single-shot JSON readiness report for portals, accessibility, KWin windowing, and input
 
 **Discovery**
 
 - `list_apps` — running desktop apps visible to the AT-SPI registry
-- `list_windows` — compositor windows with title, app id, wm_class, focus state, client type (Wayland/X11), and bounds
+- `list_windows` — windows with title, app id, wm_class, focus state, client type, and bounds
 - `focused_window` — the window currently holding keyboard focus
 - `get_app_state` — combined screenshot + accessibility tree for a chosen app, with element indices that the input tools accept. Scope it with `app_name_or_bundle_identifier` or a window target; an unscoped call returns the whole desktop tree, reports `tree_scoped: false`, and warns
 - `screenshot` — capture the screen as a bounded PNG or JPEG image; can target a window, which is raised to the front and cropped to just that window
@@ -88,7 +101,7 @@ Targeted `press_key`/`type_text` results append focused-element feedback from AT
 **Navigation**
 
 - `activate_window` — focus a window by `window_id`, `pid`, `app_id`, `wm_class`, `title`, or terminal selectors
-- `move_window` / `resize_window` — reposition or resize a window in desktop coordinates (GNOME Shell extension backend); useful to recover windows that are partially off-screen
+- `move_window` / `resize_window` — reposition or resize a window in desktop coordinates through KWin scripting
 
 **Conditional host execution**
 
@@ -103,7 +116,6 @@ Targeted `press_key`/`type_text` results append focused-element feedback from AT
 | Class | Tools | Contract |
 | --- | --- | --- |
 | Read-only observation | `doctor`, `list_apps`, `list_windows`, `focused_window`, `get_app_state` | `readOnlyHint=true`; may reveal app, window, accessibility, and screenshot contents. `get_app_state` may trigger the desktop screenshot portal prompt. |
-| Local setup mutators | `setup_accessibility`, `setup_window_targeting` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`; modifies user desktop configuration by enabling accessibility or installing/enabling the GNOME window-targeting extension. |
 | UI state mutators | `activate_window`, `move_window`, `resize_window`, `scroll`, `screenshot` | `readOnlyHint=false`, `destructiveHint=false`; changes focus, geometry, or scroll position in the live desktop, or raises a window to capture it. |
 | Desktop action mutators | `click`, `drag`, `press_key`, `type_text`, `perform_action`, `set_value` | `readOnlyHint=false`, `destructiveHint=true`, `openWorldHint=true`; can trigger arbitrary actions in whatever local application is targeted. |
 | Conditional host-code execution | `run_shell` | Absent unless `COMPUTER_USE_LINUX_ENABLE_SHELL=1`; when enabled, `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=true`. Runs with the MCP server user's host permissions. |
@@ -117,9 +129,6 @@ The binary also exposes the same capabilities from the CLI for scripting and deb
 ```
 computer-use-linux mcp                                  # stdio MCP server
 computer-use-linux doctor                               # JSON readiness report
-computer-use-linux setup                                # enable AT-SPI
-computer-use-linux guard-accessibility                  # explicit foreground GNOME accessibility guard
-computer-use-linux setup-window-targeting               # install GNOME Shell extension
 computer-use-linux apps
 computer-use-linux state [APP_NAME]
 computer-use-linux screenshot                           # JSON screenshot summary
@@ -128,42 +137,38 @@ computer-use-linux windows
 
 ## Support matrix
 
-Validated manually on Ubuntu 25.10 (GNOME Shell 50.1, Wayland). Other compositor backends are implemented and covered by parser / contract tests, but real desktop behavior still depends on each session exposing its expected control API.
-
-| Desktop/session | Window backend | Notes |
+| Desktop/session | Window backend | Scope |
 | --- | --- | --- |
-| GNOME Wayland | GNOME Shell extension first, `org.gnome.Shell.Introspect` fallback | Full target. The extension provides exact window activation when GNOME blocks native introspection; Introspect can list windows and focus apps by `app_id` when allowed. |
-| GNOME X11 | `org.gnome.Shell.Introspect`, then generic X11/EWMH | AT-SPI works; keyboard input prefers `xdotool`/XTEST so the live XKB layout resolves keys correctly. |
-| KDE Plasma / KWin | temporary KWin DBus scripting | Lists and focuses windows through Plasma 5 or 6 `org.kde.KWin` scripting APIs when the session bus exposes them. |
-| Hyprland | `hyprctl clients -j` and `hyprctl dispatch focuswindow` | Requires `hyprctl` in the desktop session. |
-| i3 | `i3-msg`; optional `xprop` for PID hydration | Lists and focuses i3 windows over the active i3 IPC socket. |
-| COSMIC Wayland | `computer-use-linux-cosmic` helper | Installed automatically by `./install.sh`, `cargo install`, and npm. For custom/manual layouts, put the helper next to the main binary, on `PATH`, or point `COMPUTER_USE_LINUX_COSMIC_HELPER` at it. |
-| Sway / generic wlroots | no dedicated backend yet | AT-SPI, screenshots, and global `ydotool` input can still work; exact window list/focus is currently unavailable unless another backend applies. |
-| Generic X11 / XFCE / other EWMH WMs | `wmctrl` plus `xprop` | Lists, focuses, moves, and resizes windows; keyboard input prefers `xdotool`/XTEST. Window origins are read from the X server, since `wmctrl -lG` counts the frame offset twice. |
-
-If you run on a desktop not covered above, or a covered backend does not come up cleanly, please open an issue with the output of `computer-use-linux doctor` so we can extend the matrix honestly.
+| KDE Plasma 6 on Wayland | KWin scripting | Sole supported target and window-management backend; screenshots and RemoteDesktop input use XDG portals, with ydotool and direct uinput pointer fallback. Shared AT-SPI provides application state. |
 
 ## Install
 
-COSMIC users do not need a second package or a separate helper install when using `./install.sh`, `cargo install`, or the npm wrapper. Those paths install `computer-use-linux-cosmic` alongside the main binary automatically. Only manual prebuilt-binary installs need you to copy both release assets.
-
 ### Option A — `./install.sh` from a clone
 
-Installs system packages on Debian/Ubuntu, Fedora/RHEL-like, Arch-like, or Artix systems; installs Rust if needed; builds both release binaries; installs them to `~/.local/bin`; configures `ydotoold` as a systemd user service when available; enables GNOME AT-SPI settings when running under GNOME; and installs the bundled GNOME Shell extension on GNOME Wayland.
+Installs build dependencies on supported Debian/Ubuntu, Fedora/RHEL-like, or
+Arch-like systems; installs Rust if needed; builds the binary into
+`~/.local/bin`; optionally configures `ydotoold` as a systemd user service; and
+runs `doctor`. It does not configure toolkit accessibility for you.
 
 ```bash
 git clone https://github.com/agent-sh/computer-use-linux
 cd computer-use-linux
 ./install.sh
-# log out and back in if the GNOME extension was newly installed
 computer-use-linux doctor | jq .readiness
 ```
 
-`ydotool` is an optional fallback. On X11, the installer includes `xdotool` as the required keyboard backend. If ydotool is unavailable from the configured repositories, the installer continues, but `doctor` still requires a keyboard-capable RemoteDesktop portal on Wayland or xdotool on X11; direct uinput provides absolute pointer input only. On non-systemd hosts, automatic `ydotoold` service setup is skipped and the installer prints a command suitable for a per-user supervisor. For an unrecognized distro, pass `--package-manager apt|dnf|pacman`; `--force-unknown-distro` auto-selects only when exactly one of those managers is available.
+`ydotool` is an optional input fallback; direct uinput supplies absolute
+pointer input. The installer skips automatic daemon setup on non-systemd hosts
+and prints manual `ydotoold` guidance. For an unrecognized distro, pass
+`--package-manager apt|dnf|pacman`; `--force-unknown-distro` auto-selects only
+when exactly one of those managers is available.
 
-### Option B — `cargo install` (Rust binaries, no system setup)
+### Option B — `cargo install` (Rust binary)
 
-Installs the Rust binaries from crates.io. You still handle the system-level pieces yourself: AT-SPI, desktop portals, the optional `ydotoold` fallback, and the GNOME extension if you need the GNOME Wayland exact-focus backend.
+Installs the Rust binary from crates.io. Ensure your system provides the KDE
+desktop portals and the GTK/AT-SPI accessibility prerequisites required by
+your applications. No project accessibility setup command is needed or
+provided.
 
 ```bash
 cargo install computer-use-linux
@@ -179,23 +184,23 @@ cargo install --git https://github.com/agent-sh/computer-use-linux
 Then, as needed:
 
 ```bash
-sudo apt install ydotool at-spi2-core         # ydotool 1.0.3+ when using this fallback
-sudo apt install wtype                        # optional Unicode typing on wlroots/Hyprland Wayland
-systemctl --user enable --now ydotoold         # only when doctor selects ydotool
-computer-use-linux setup                      # gsettings AT-SPI bridge
-computer-use-linux setup-window-targeting     # GNOME Shell extension
+sudo apt install at-spi2-core                 # plus your distro's GTK accessibility packages
+sudo apt install ydotool                      # optional input fallback
+systemctl --user enable --now ydotoold         # only when using ydotool
 ```
 
 ### Option C — npm wrapper (binary download)
 
-Good for users who already have Node.js and want a no-Rust install. The npm package downloads and verifies the matching main and COSMIC helper binaries during install, then the wrapper sets `COMPUTER_USE_LINUX_COSMIC_HELPER` to the bundled helper automatically.
+Good for users who already have Node.js and want a no-Rust install. The npm
+package downloads and verifies the matching Linux binary during install.
 
 ```bash
 npm install -g @agent-sh/computer-use-linux
 computer-use-linux doctor
 ```
 
-You will still need AT-SPI enabled (`computer-use-linux setup`) and one input backend reported ready by `doctor`. Start `ydotoold` only when using the ydotool fallback.
+You still need the system-level GTK/AT-SPI prerequisites for your applications
+and a supported input path. Start `ydotoold` only when using ydotool.
 
 ### Option D — prebuilt binaries
 
@@ -206,16 +211,16 @@ Linux x86_64 / aarch64 builds are published with each tag. Each binary ships a `
 ```bash
 target=x86_64-unknown-linux-gnu
 base=https://github.com/agent-sh/computer-use-linux/releases/latest/download
-for binary in computer-use-linux computer-use-linux-cosmic; do
-  asset="$binary-$target"
-  curl -L -O "$base/$asset"
-  curl -L -O "$base/$asset.sha256"
-  sha256sum -c "$asset.sha256"
-  install -m 0755 "$asset" "$HOME/.local/bin/$binary"
-done
+asset="computer-use-linux-$target"
+curl -L -O "$base/$asset"
+curl -L -O "$base/$asset.sha256"
+sha256sum -c "$asset.sha256"
+install -m 0755 "$asset" "$HOME/.local/bin/computer-use-linux"
 ```
 
-You will still need `ydotoold` running and AT-SPI enabled (run `computer-use-linux setup` and the systemd commands above).
+You still need KDE desktop portals and the system-level GTK/AT-SPI
+prerequisites required by your applications. Run `ydotoold` only when using
+that input fallback.
 
 ## Wire it into your MCP host
 
@@ -341,7 +346,7 @@ For one-off installs without adding the tap first, Hermes also accepts `hermes s
 
 ### Generic MCP client
 
-Spawn the binary with `["mcp"]` as the argv tail. It speaks JSON-RPC over stdio per the rmcp 2024-11-05 protocol; capability discovery happens through `tools/list` and the `doctor` tool. The server normally needs no MCP-specific configuration, but desktop runtime environment still matters (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, portals, AT-SPI, `ydotoold`, and optionally `COMPUTER_USE_LINUX_COSMIC_HELPER`).
+Spawn the binary with `["mcp"]` as the argv tail. It speaks JSON-RPC over stdio per the rmcp 2024-11-05 protocol; capability discovery happens through `tools/list` and the `doctor` tool. The server normally needs no MCP-specific configuration, but desktop runtime environment still matters (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, KDE desktop portals, AT-SPI, and optionally `ydotoold`).
 
 ## First-run checklist
 
@@ -353,16 +358,13 @@ Spawn the binary with `["mcp"]` as the argv tail. It speaks JSON-RPC over stdio 
 
    Aim for `can_register_mcp_tools`, `can_build_accessibility_tree`, `can_send_development_input`, `can_query_windows`, and `can_capture_screenshots` all `true`. The `blockers` array should be empty. `can_capture_screenshots` means a route was detected, not that a test capture succeeded.
 
-2. **If `accessibility.at_spi_bus.ok = false`** — run `computer-use-linux setup` (or call the `setup_accessibility` MCP tool). This sets:
-   - `org.gnome.desktop.interface toolkit-accessibility true`
+2. **If AT-SPI is unavailable** — install/configure your distribution's system-level GTK and AT-SPI prerequisites. There is no project setup command for accessibility. Restart target apps if needed.
 
-   You may need to restart toolkit-using apps for the change to take effect.
+3. **If `windowing.can_list_windows = false`** — check that KWin scripting is available on the session bus.
 
-3. **If `windowing.can_list_windows = false`** — inspect `doctor.windowing.backends`. On GNOME Wayland, run `computer-use-linux setup-window-targeting` (or call `setup_window_targeting`) to install the bundled `computer-use-linux@avifenesh.dev` Shell extension, then log out and back in so GNOME Shell loads it. On KDE, Hyprland, i3, COSMIC, or generic X11, install or expose the matching compositor tool/helper shown in the backend details.
+4. **Allow portal capture/input when prompted.** XDG desktop portals may request permission before the first screenshot or RemoteDesktop input session.
 
-4. **Grant the screencast portal on first screenshot.** The first time `get_app_state` or any screenshot subcommand runs, GNOME will pop a portal dialog asking to share the screen. Accept once and tick "remember" to make it sticky for the session.
-
-5. **Confirm compatible ydotool 1.0.3+ and `ydotoold` are available.**
+5. **If using ydotool, confirm `ydotoold` is available.**
 
    ```bash
    systemctl --user status ydotoold
@@ -372,27 +374,15 @@ Spawn the binary with `["mcp"]` as the argv tail. It speaks JSON-RPC over stdio 
 
 ## Environment variables
 
-Most setups need none of these — `doctor` and the installers pick sensible defaults. They exist for overriding auto-detected paths and input backends.
+These optional environment variables configure the server or npm wrapper.
 
 **Server runtime** (set in the MCP host's environment):
 
 | Variable | Effect |
 | --- | --- |
 | `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE` | Set exactly to `1` to expose the optional `complete_interaction` notification tool. Requires `notify-send` and a desktop notification service; disabled by default. |
-| `COMPUTER_USE_LINUX_COSMIC_HELPER` | Path to the `computer-use-linux-cosmic` helper when it isn't next to the binary or on `PATH`. |
 | `CU_DISABLE_ABS_POINTER` | Disable the uinput absolute pointer and click through `ydotool` instead for setups where the abs-pointer device misbehaves. |
-| `COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER` / `…_KEYBOARD` | Always route pointer / keyboard through the RemoteDesktop portal on Wayland, skipping auto-detection. |
-| `COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER` / `…_KEYBOARD` | Always route pointer / keyboard through `ydotool`, skipping the portal and KDE clipboard paths; pointer forcing also skips native-X11 `xdotool` coordinate clicks. |
-| `COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD` | Prefer `xdotool`/XTEST keyboard input when `DISPLAY` is available. `COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD=1` takes precedence. |
-| `COMPUTER_USE_LINUX_XDOTOOL_TYPE_DELAY_MS` | Per-character delay for `xdotool type` in milliseconds (default `12`). `0` is faster but can deliver characters out of order on some X servers. |
-| `COMPUTER_USE_LINUX_SCREENSHOT_BACKEND` | Force a single screenshot backend, skipping the fallback chain. Accepts `gnome-shell`, `portal`, `x11`, or `gnome-screenshot`. `x11` works only on a native X11 session. Pin `gnome-screenshot` for background/systemd contexts where the GNOME Shell and portal DBus paths are denied. |
 | `COMPUTER_USE_LINUX_ENABLE_SHELL` | Set exactly to `1` before starting the MCP server to register the destructive `run_shell` tool. Unset by default. Do not enable for untrusted or unattended MCP hosts. |
-
-**Build-time identity overrides** (set while compiling a downstream embedded
-bundle): `CUL_GNOME_EXTENSION_UUID`, `CUL_DBUS_SERVICE`, and
-`CUL_DBUS_OBJECT_PATH` replace the default standalone GNOME Shell extension
-UUID and DBus endpoint in both the Rust probes and the generated extension
-files.
 
 **npm wrapper** (set during `npm install`, or before running):
 
@@ -401,18 +391,15 @@ files.
 | `COMPUTER_USE_LINUX_BIN` | Run this binary instead of the one bundled by the npm package. |
 | `COMPUTER_USE_LINUX_DOWNLOAD_BASE` | Override the GitHub release base URL the installer downloads from (mirrors, air-gapped hosts). |
 | `COMPUTER_USE_LINUX_SKIP_DOWNLOAD=1` | Skip the post-install binary download entirely. |
-| `COMPUTER_USE_LINUX_LOCAL_BINARY` / `…_LOCAL_COSMIC_HELPER` | Install from a local build instead of downloading (used by CI and local testing). |
+| `COMPUTER_USE_LINUX_LOCAL_BINARY` | Install from a local build instead of downloading (used by CI and local testing). |
 
 ## Architecture
 
 - **Accessibility tree** — [`atspi`](https://crates.io/crates/atspi) crate (tokio backend) talks to the AT-SPI registry on the user session bus. The tree is flattened to `(role, name, text, states, bounds)` tuples and indexed; element indices are stable for the duration of a `get_app_state` snapshot.
-- **DBus where desktops expose it** — [`zbus`](https://crates.io/crates/zbus) for portal calls (`org.freedesktop.portal.Screenshot`, `…RemoteDesktop`, `…ScreenCast`), GNOME Shell screenshots (`org.gnome.Shell.Screenshot`), the bundled GNOME extension's `dev.avifenesh.ComputerUseLinux.WindowControl` service, and temporary KWin scripting.
+- **Desktop integration** — [`zbus`](https://crates.io/crates/zbus) for XDG screenshot and RemoteDesktop portal calls and temporary KWin scripting.
 - **MCP transport** — [`rmcp`](https://crates.io/crates/rmcp) with the `transport-io` feature; stdio framing, no network.
-- **Input fallback** — on X11, keyboard input prefers `xdotool`/XTEST and falls back only when xdotool cannot launch. On Wayland, literal text uses `wtype` when installed and the remote-desktop portal is unavailable; `wtype` supports Unicode through the virtual-keyboard protocol on compatible compositors such as Hyprland/wlroots. If wtype is unavailable, the binary falls back to a compatible ydotool 1.0.3+ CLI and `ydotoold` socket. A launched wtype failure is returned without replaying the text. `install.sh` can configure `ydotoold`; the `setup` command only enables the GNOME AT-SPI bridge.
-- **Native X11 coordinate clicks** — eligible native X11 sessions use one supervised `xdotool mousemove -- X Y click --repeat N BUTTON` command for left, middle, and right clicks; ydotool is used only when xdotool cannot launch, while a launched nonzero xdotool command is reported as an error without replay. `COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER=1` skips this xdotool path.
-- **Window registry** — `list_windows`, `focused_window`, `activate_window`, `press_key`, and `type_text` share a backend registry. It tries GNOME extension, GNOME Introspect, COSMIC helper, KWin scripting, Hyprland `hyprctl`, i3 IPC, and generic X11/EWMH in that order, skipping empty or failed backends so another compositor backend can answer.
-- **GNOME extension fallback** — recent GNOME builds deny `org.gnome.Shell.Introspect.GetWindows` to non-blessed clients. The bundled Shell extension exposes window data and exact activation under `dev.avifenesh.ComputerUseLinux.WindowControl`.
-- **COSMIC helper** — `computer-use-linux-cosmic` talks to COSMIC toplevel protocols and is resolved from `COMPUTER_USE_LINUX_COSMIC_HELPER`, next to the running binary, or from `PATH`.
+- **Input** — pointer and keyboard input can use the RemoteDesktop portal; ydotool is an input fallback, with direct uinput available for absolute pointer actions. Text entry supports KDE clipboard typing.
+- **Window registry** — `list_windows`, `focused_window`, `activate_window`, `move_window`, and `resize_window` use KWin scripting.
 - **Terminal enrichment** — `list_windows` cross-references each terminal window with its controlling TTY and the foreground process on that TTY, so `type_text` / `press_key` can target "the terminal where `pytest` is running" without the host ever knowing the window id.
 
 ## Security
@@ -420,9 +407,8 @@ files.
 Computer-use tooling is, by definition, a privilege-escalation surface. The threat model:
 
 - **`ydotoold` runs as a per-user service** with read/write access to `/dev/uinput`. `install.sh` automates this for systemd user sessions and prints manual supervisor guidance elsewhere. Any process that can connect to its socket (`/run/user/$UID/.ydotool_socket`, mode `0600` by default) can synthesize arbitrary input — keypresses, clicks, anything. Keep the socket in the user runtime dir (the default), not in `/tmp` or any world-readable location. Do not run `ydotoold` as root or as a system service.
-- **The screencast portal asks for permission once per session.** Granting it lets the calling MCP host capture the screen for the rest of the session. If you don't want that, decline the portal dialog and use `get_app_state` with `include_screenshot: false`.
-- **AT-SPI exposes window contents to any client on your session bus.** Enabling the AT-SPI bridge (`setup_accessibility`) is a prerequisite for this binary; it's also what screen readers use, and it shares the same trust boundary.
-- **The GNOME Shell extension** is loaded only into your user's GNOME Shell, runs in the Shell's JS sandbox, and exposes a single DBus interface on the user session bus. It does not request any extra permissions.
+- **Desktop portals request permission.** Granting screenshot or RemoteDesktop access lets the MCP host capture or control the desktop for the permitted session. If you don't want screenshot access, decline the prompt and use `get_app_state` with `include_screenshot: false`.
+- **AT-SPI exposes window contents to clients on your session bus.** It is also used by screen readers and shares the same trust boundary. Install and configure the system-level GTK/AT-SPI prerequisites required by your applications.
 - **No network.** This binary opens no TCP/UDP listener, makes no outbound Internet connections, and ships no telemetry. It does use local session transports such as DBus and the per-user `ydotoold` Unix socket.
 - **Mutating tools are explicit.** The MCP tool list annotates read-only versus mutating tools, and CI fails if the published tool annotations drift from the table above. Treat those annotations as hints; the host is still responsible for user approval and policy.
 
@@ -441,42 +427,14 @@ No sound or additional desktop settings are enabled by this option.
 This option currently applies only to directly spawned MCP hosts. The native Pi
 extension does not forward the flag or include this optional tool in its catalog.
 
-`setup` and `setup_accessibility` write and read back GNOME's
-`org.gnome.desktop.interface toolkit-accessibility` setting, even if AT-SPI
-is already enabled at runtime. A runtime-only success is reported as a warning:
-newly launched GTK apps may still have no tree. Enabling the saved key may
-require restarting target apps. Other accessibility tools can change that key
-later; setup does not continuously override user settings.
-
-For an explicit foreground guard while using desktop automation, run:
-
-```bash
-computer-use-linux guard-accessibility
-```
-
-The guard registers a passive AT-SPI window-activation listener and watches
-GNOME's saved `toolkit-accessibility` key. It re-enables the key after a reset
-and verifies it by readback, with periodic checks as well as change monitoring.
-This affects all applications using the current user's GNOME setting, not just
-the target app. It does not start a screen reader or change focus.
-
-`mcp`, `setup`, `setup_accessibility`, and `get_app_state` never start this guard.
-Stop it with Ctrl-C or SIGTERM **before** intentionally disabling accessibility.
-Stopping ends setting writes and removes its listener without disabling other
-accessibility clients or restoring an old saved value. A reset and reassertion
-are not atomic: an app launched in that interval may still need restarting.
-This is an opt-in mitigation, not a guarantee that every GNOME toggle sequence
-preserves application accessibility trees.
-
 `computer-use-linux doctor` is the source of truth. Common failure modes and fixes:
 
-- **`accessibility.at_spi_bus.ok = false`** — AT-SPI registry isn't running or the toolkit bridge is off. Fix: `computer-use-linux setup` (or call the `setup_accessibility` MCP tool). Restart the apps you want to drive.
-- **`windowing.gnome_shell_introspect.ok = false` and `gnome_shell_extension_dbus.ok = false`** — GNOME blocks introspection and the extension isn't installed. Fix: `computer-use-linux setup-window-targeting`, then log out and log back in.
-- **`input.ydotool_socket.ok = false` while ydotool is the selected fallback** — daemon isn't running. On systemd, run `systemctl --user enable --now ydotoold`. On other init systems, rerun `./install.sh` and configure your per-user supervisor with the command it prints. If `ydotool` is not packaged for your distro, use another input backend or install a compatible ydotool release manually.
-- **`input.ydotool.ok = false` with an unsupported CLI message** — install ydotool 1.0.3 or newer. A running daemon or socket alone is not enough; `doctor` verifies the raw key, wheel, stdin typing, and absolute-movement command family before advertising the backend.
-- **`input.uinput.ok = false`** — `/dev/uinput` isn't accessible to your user. Fix: add yourself to the `input` group (`sudo usermod -aG input $USER`) and re-login. On distros that ship `uinput` as a kernel module without auto-loading it, add `uinput` to `/etc/modules-load.d/`. Direct uinput supplies absolute pointer input only, so `doctor` also requires a keyboard-capable portal, xdotool, or ydotool backend.
-- **Portal calls hang or time out** — `xdg-desktop-portal` or its backend (`-gnome`, `-gtk`, `-kde`, `-wlr`) crashed. Fix: check `journalctl --user -u xdg-desktop-portal -u xdg-desktop-portal-gnome --since '5 min ago'` and restart the relevant unit.
-- **KWin / Hyprland / i3 / COSMIC / X11 windowing is unavailable** — check `doctor.windowing.backends`. KWin needs session-bus scripting; Hyprland needs `hyprctl`; i3 needs `i3-msg` and its IPC socket; generic X11 needs `wmctrl` and `xprop`. COSMIC needs `computer-use-linux-cosmic`, which the standard installers provide automatically; if you copied binaries by hand, copy the helper too or set `COMPUTER_USE_LINUX_COSMIC_HELPER`.
+- **AT-SPI is unavailable** — verify your system-level GTK/AT-SPI packages and session accessibility services, then restart target applications if needed. There is no application setup command for accessibility.
+- **`windowing.can_list_windows = false`** — check that KWin scripting is available on the session bus.
+- **`input.ydotool_socket.ok = false` while using ydotool** — the daemon isn't running. On systemd, run `systemctl --user enable --now ydotoold`. On other init systems, use the per-user supervisor guidance from `./install.sh`.
+- **`input.ydotool.ok = false` with an unsupported CLI message** — install ydotool 1.0.3 or newer. A running daemon or socket alone is not enough; `doctor` verifies the required command set before advertising the backend.
+- **`input.uinput.ok = false`** — `/dev/uinput` isn't accessible to your user. Configure the device permissions using your distribution's guidance and re-login. Direct uinput provides absolute pointer input; use a portal or ydotool path for keyboard input.
+- **Portal calls hang or time out** — check that `xdg-desktop-portal` and its KDE backend are running, then inspect their user-service logs.
 - **Screenshots return black frames on multi-monitor setups** — known portal / compositor edge case. Use `get_app_state` with `include_screenshot: false` and rely on AT-SPI until the portal backend is healthy.
 - **`type_text` types into the wrong window** — pass an explicit target (`window_id`, `pid`, `wm_class`, `title`, or for terminals `tty` / `terminal_pid` / `terminal_command` / `terminal_cwd`). Without a target, input goes to whatever window currently has compositor focus.
 - **Wayland pointer actions miss an unfocused window** — injected pointer input is subject to the compositor's input-focus rules. Call `activate_window` for the target before `click`, `drag`, or coordinate `scroll`; a pointer can land at the requested coordinate without the unfocused surface receiving the action.
@@ -491,17 +449,8 @@ acceptance condition. Do not pass its widget-local `(85, 85)` directly as a
 window-relative click: margins and decorations belong to different spaces.
 
 [The semantic-click regression](scripts/semantic_click_test.py) runs against a
-built binary in an isolated graphical display and checks actual GTK3 button
-activation through MCP at scales 1 and 2. This does not establish correctness
-of Mutter 46 EWMH move/resize, all mixed-output layouts, or GNOME 50.4 pointer
-clicks.
-
-Native Wayland qualification on GNOME 50.1 at 133.3% display scale used the
-same green target for both modes: crop-relative `(122, 145)` and desktop
-`(2140, 193)` both delivered widget coordinates approximately `(84.81, 84.78)`
-with `hit: true` through uinput. These are one capture's measured coordinates,
-not reusable offsets. Raw surface coordinates must still be transformed before
-comparing them with a widget-local target.
+built binary in an isolated graphical display and checks GTK button activation
+through MCP at scales 1 and 2.
 
 ## Related
 
@@ -521,7 +470,6 @@ Built on top of:
 - [`zbus`](https://crates.io/crates/zbus) — async DBus
 - [`rmcp`](https://crates.io/crates/rmcp) — MCP runtime
 - [`ydotool`](https://github.com/ReimuNotMoe/ydotool) — Wayland-friendly uinput driver
-- [`cosmic-protocols`](https://crates.io/crates/cosmic-protocols) — COSMIC Wayland toplevel protocol bindings
 
 ## Publishing
 
