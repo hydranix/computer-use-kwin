@@ -2,9 +2,9 @@
   <h1>computer-use-linux for KDE Plasma 6</h1>
   <p><strong>Control a KDE Plasma 6 Wayland desktop from an MCP host.</strong></p>
   <p>
-    <a href="https://github.com/agent-sh/computer-use-linux/actions/workflows/ci.yml"><img src="https://github.com/agent-sh/computer-use-linux/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://crates.io/crates/computer-use-linux"><img src="https://img.shields.io/crates/v/computer-use-linux.svg" alt="crates.io"></a>
-    <a href="https://www.npmjs.com/package/@agent-sh/computer-use-linux"><img src="https://img.shields.io/npm/v/@agent-sh/computer-use-linux.svg" alt="npm"></a>
+    <a href="https://github.com/hydranix/computer-use-kwin/actions/workflows/ci.yml"><img src="https://github.com/hydranix/computer-use-kwin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://crates.io/crates/computer-use-kwin"><img src="https://img.shields.io/crates/v/computer-use-kwin.svg" alt="crates.io"></a>
+    <a href="https://www.npmjs.com/package/@hydranix/computer-use-kwin"><img src="https://img.shields.io/npm/v/@hydranix/computer-use-kwin.svg" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   </p>
 </div>
@@ -16,11 +16,13 @@ AT-SPI accessibility trees, captures through XDG desktop portals, and controls
 windows through KWin scripting.
 
 ```bash
-npm install -g @agent-sh/computer-use-linux
-computer-use-linux doctor | jq .readiness
+git clone https://github.com/hydranix/computer-use-kwin.git
+cd computer-use-kwin
+cargo build --release
+./target/release/computer-use-kwin doctor | jq .readiness
 ```
 
-The Rust crate is published as [`computer-use-linux`](https://crates.io/crates/computer-use-linux) and the npm wrapper as [`@agent-sh/computer-use-linux`](https://www.npmjs.com/package/@agent-sh/computer-use-linux). Prebuilt binaries ship with the [latest release](https://github.com/agent-sh/computer-use-linux/releases/latest).
+Build this fork from source for now; availability of its [`computer-use-kwin` crate](https://crates.io/crates/computer-use-kwin) and [`@hydranix/computer-use-kwin` npm package](https://www.npmjs.com/package/@hydranix/computer-use-kwin) has not been confirmed.
 
 ## What this is
 
