@@ -117,7 +117,7 @@ def read_tools(
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "computer-use-linux-pi-catalog",
+                    "name": "computer-use-kwin-pi-catalog",
                     "version": "0",
                 },
             },
@@ -134,7 +134,7 @@ def read_tools(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--binary", default="target/debug/computer-use-linux")
+    parser.add_argument("--binary", default="target/debug/computer-use-kwin")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--output", default="pi/extension/generated-tools.ts")
     parser.add_argument("--check", action="store_true")
@@ -149,7 +149,7 @@ def main() -> int:
         raise AssertionError(f"binary does not exist: {binary}")
 
     default_tools = read_tools(binary)
-    shell_tools = read_tools(binary, {"COMPUTER_USE_LINUX_ENABLE_SHELL": "1"})
+    shell_tools = read_tools(binary, {"COMPUTER_USE_KWIN_ENABLE_SHELL": "1"})
     default_by_name = {tool["name"]: catalog_entry(tool) for tool in default_tools}
     shell_by_name = {tool["name"]: catalog_entry(tool) for tool in shell_tools}
     changed_common = {

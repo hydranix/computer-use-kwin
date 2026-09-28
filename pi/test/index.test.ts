@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createComputerUseLinuxExtension,
+	createComputerUseKwinExtension,
 	findExecutableOnPath,
 } from "../extension/index.ts";
 import { GENERATED_MCP_TOOLS } from "../extension/generated-tools.ts";
@@ -138,7 +138,7 @@ describe("native Pi extension", () => {
 	it("does not resolve removed setup tooling from a capability query", async () => {
 		const harness = load();
 		await harness.emit("session_start");
-		const loader = harness.tools.get("computer_use_linux_tools")!;
+		const loader = harness.tools.get("computer_use_kwin_tools")!;
 
 		const result = await loader.execute(
 			"loader",
@@ -154,7 +154,7 @@ describe("native Pi extension", () => {
 	});
 
 	beforeEach(() => {
-		agentDir = mkdtempSync(join(tmpdir(), "computer-use-linux-pi-test-"));
+		agentDir = mkdtempSync(join(tmpdir(), "computer-use-kwin-pi-test-"));
 		vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
 		FakeMcpClient.instances = [];
 		FakeMcpClient.result = { content: [{ type: "text", text: "ok" }] };
@@ -169,9 +169,9 @@ describe("native Pi extension", () => {
 
 	function load() {
 		const harness = createPi();
-		createComputerUseLinuxExtension({
+		createComputerUseKwinExtension({
 			findBinary: () => ({
-				binaryPath: "/tmp/computer-use-linux",
+				binaryPath: "/tmp/computer-use-kwin",
 				env: { PATH: "/usr/bin" },
 			}),
 			loadClientModule: () => ({
@@ -192,25 +192,25 @@ describe("native Pi extension", () => {
 		expect(harness.activeTools()).toEqual([
 			"read",
 			"bash",
-			"computer_use_linux_tools",
+			"computer_use_kwin_tools",
 		]);
 		expect(FakeMcpClient.instances).toHaveLength(0);
 
 		for (const tool of GENERATED_MCP_TOOLS) {
-			const registered = harness.tools.get(`computer_use_linux_${tool.name}`);
+			const registered = harness.tools.get(`computer_use_kwin_${tool.name}`);
 			expect(registered?.description).toContain(tool.description);
 			expect(registered?.executionMode).toBe("sequential");
 			expect(registered?.parameters).toMatchObject(tool.inputSchema);
 		}
 		expect(
-			harness.tools.get("computer_use_linux_click")?.description,
+			harness.tools.get("computer_use_kwin_click")?.description,
 		).toContain("obtain user approval");
 	});
 
 	it("activates exact tools additively without starting the desktop process", async () => {
 		const harness = load();
 		await harness.emit("session_start");
-		const loader = harness.tools.get("computer_use_linux_tools")!;
+		const loader = harness.tools.get("computer_use_kwin_tools")!;
 
 		const result = await loader.execute(
 			"loader",
@@ -223,9 +223,9 @@ describe("native Pi extension", () => {
 		expect(harness.activeTools()).toEqual([
 			"read",
 			"bash",
-			"computer_use_linux_tools",
-			"computer_use_linux_doctor",
-			"computer_use_linux_get_app_state",
+			"computer_use_kwin_tools",
+			"computer_use_kwin_doctor",
+			"computer_use_kwin_get_app_state",
 		]);
 		expect(result.details).toMatchObject({
 			matches: ["doctor", "get_app_state"],
@@ -236,7 +236,7 @@ describe("native Pi extension", () => {
 	it("restores enabled tools from persisted branch state", async () => {
 		const harness = load();
 		await harness.emit("session_start", { reason: "startup" });
-		const loader = harness.tools.get("computer_use_linux_tools")!;
+		const loader = harness.tools.get("computer_use_kwin_tools")!;
 		await loader.execute(
 			"loader",
 			{ tools: ["doctor"] },
@@ -247,13 +247,13 @@ describe("native Pi extension", () => {
 
 		await harness.emit("session_start", { reason: "reload" });
 
-		expect(harness.activeTools()).toContain("computer_use_linux_doctor");
+		expect(harness.activeTools()).toContain("computer_use_kwin_doctor");
 	});
 
 	it("finds tools by capability query", async () => {
 		const harness = load();
 		await harness.emit("session_start");
-		const loader = harness.tools.get("computer_use_linux_tools")!;
+		const loader = harness.tools.get("computer_use_kwin_tools")!;
 
 		const result = await loader.execute(
 			"loader",
@@ -267,7 +267,7 @@ describe("native Pi extension", () => {
 			matches: expect.arrayContaining(["screenshot"]),
 		});
 		expect(harness.activeTools()).toContain(
-			"computer_use_linux_screenshot",
+			"computer_use_kwin_screenshot",
 		);
 	});
 
@@ -280,7 +280,7 @@ describe("native Pi extension", () => {
 				{ type: "image", data: "aGVsbG8=", mimeType: "image/png" },
 			],
 		};
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 
 		const first = await doctor.execute(
 			"one",
@@ -313,7 +313,7 @@ describe("native Pi extension", () => {
 			content: [{ type: "text", text: "failed" }],
 			isError: true,
 		};
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 		const result = await doctor.execute(
 			"one",
 			{},
@@ -324,7 +324,7 @@ describe("native Pi extension", () => {
 
 		const override = await harness.emit("tool_result", {
 			type: "tool_result",
-			toolName: "computer_use_linux_doctor",
+			toolName: "computer_use_kwin_doctor",
 			toolCallId: "one",
 			input: {},
 			content: result.content,
@@ -344,7 +344,7 @@ describe("native Pi extension", () => {
 				{ type: "text", text: "omitted tail" },
 			],
 		};
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 		const result = await doctor.execute(
 			"one",
 			{},
@@ -372,7 +372,7 @@ describe("native Pi extension", () => {
 				mimeType: "image/png",
 			})),
 		};
-		const screenshot = harness.tools.get("computer_use_linux_screenshot")!;
+		const screenshot = harness.tools.get("computer_use_kwin_screenshot")!;
 		const result = await screenshot.execute(
 			"one",
 			{},
@@ -393,7 +393,7 @@ describe("native Pi extension", () => {
 	it("closes the session client exactly once", async () => {
 		const harness = load();
 		await harness.emit("session_start");
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 		await doctor.execute(
 			"one",
 			{},
@@ -409,16 +409,16 @@ describe("native Pi extension", () => {
 	});
 
 	it("forwards retained runtime settings but not removed input overrides", async () => {
-		vi.stubEnv("COMPUTER_USE_LINUX_BIN", process.execPath);
+		vi.stubEnv("COMPUTER_USE_KWIN_BIN", process.execPath);
 		vi.stubEnv("YDOTOOL_SOCKET", "/run/user/1000/ydotool.sock");
-		vi.stubEnv("COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_PORTAL_SCROLL_INVERT", "1");
 		vi.stubEnv("CU_DISABLE_ABS_POINTER", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_COSMIC_HELPER", "/tmp/deleted-cosmic-helper");
-		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_COSMIC_HELPER", "/tmp/deleted-cosmic-helper");
+		vi.stubEnv("COMPUTER_USE_KWIN_FORCE_PORTAL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_FORCE_PORTAL_POINTER", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_FORCE_XDOTOOL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_FORCE_YDOTOOL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_FORCE_YDOTOOL_POINTER", "1");
 		vi.stubEnv("GDMSESSION", "gnome");
 		vi.stubEnv("HYPRLAND_INSTANCE_SIGNATURE", "hyprland");
 		vi.stubEnv("I3SOCK", "/run/i3.sock");
@@ -427,26 +427,26 @@ describe("native Pi extension", () => {
 		vi.stubEnv("GIO_EXTRA_MODULES", "/usr/lib/gio/modules");
 		vi.stubEnv("GI_TYPELIB_PATH", "/usr/lib/girepository-1.0");
 		vi.resetModules();
-		const { createComputerUseLinuxExtension } = await import(
+		const { createComputerUseKwinExtension } = await import(
 			"../extension/index.ts"
 		);
 		const harness = createPi();
-		createComputerUseLinuxExtension({
+		createComputerUseKwinExtension({
 			loadClientModule: () => ({
 				ComputerUseMcpClient: FakeMcpClient as never,
 			}),
 		})(harness.pi);
 
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 		await doctor.execute("doctor", {}, undefined, undefined, {} as never);
 
 		expect(FakeMcpClient.instances[0]?.options.env).toMatchObject({
 			YDOTOOL_SOCKET: "/run/user/1000/ydotool.sock",
-			COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT: "1",
+			COMPUTER_USE_KWIN_PORTAL_SCROLL_INVERT: "1",
 			CU_DISABLE_ABS_POINTER: "1",
 		});
 		expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(
-			"COMPUTER_USE_LINUX_COSMIC_HELPER",
+			"COMPUTER_USE_KWIN_COSMIC_HELPER",
 		);
 		for (const key of [
 			"HYPRLAND_INSTANCE_SIGNATURE",
@@ -460,11 +460,11 @@ describe("native Pi extension", () => {
 			expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(key);
 		}
 		for (const key of [
-			"COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD",
-			"COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER",
-			"COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD",
-			"COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD",
-			"COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER",
+			"COMPUTER_USE_KWIN_FORCE_PORTAL_KEYBOARD",
+			"COMPUTER_USE_KWIN_FORCE_PORTAL_POINTER",
+			"COMPUTER_USE_KWIN_FORCE_XDOTOOL_KEYBOARD",
+			"COMPUTER_USE_KWIN_FORCE_YDOTOOL_KEYBOARD",
+			"COMPUTER_USE_KWIN_FORCE_YDOTOOL_POINTER",
 		]) {
 			expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(key);
 		}
@@ -472,7 +472,7 @@ describe("native Pi extension", () => {
 
 	it("fails clearly when the binary is unavailable", async () => {
 		const harness = createPi();
-		createComputerUseLinuxExtension({
+		createComputerUseKwinExtension({
 			findBinary: () => null,
 			loadClientModule: () => ({
 				ComputerUseMcpClient: FakeMcpClient as never,
@@ -480,7 +480,7 @@ describe("native Pi extension", () => {
 		})(harness.pi);
 		await harness.emit("session_start");
 
-		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		const doctor = harness.tools.get("computer_use_kwin_doctor")!;
 		await expect(
 			doctor.execute(
 				"one",
@@ -489,7 +489,11 @@ describe("native Pi extension", () => {
 				undefined,
 				{} as never,
 			),
-		).rejects.toThrow("binary was not found");
+		).rejects.toThrow(
+			"computer-use-kwin binary was not found. Reinstall " +
+				"@hydranix/computer-use-kwin, install computer-use-kwin on PATH, " +
+				"or set COMPUTER_USE_KWIN_BIN.",
+		);
 		expect(harness.notify).toHaveBeenCalledWith(
 			expect.stringContaining("binary not found"),
 			"warning",
@@ -508,7 +512,7 @@ describe("findExecutableOnPath", () => {
 
 	const script = (dir: string, mode: number) => {
 		mkdirSync(dir, { recursive: true });
-		const file = join(dir, "computer-use-linux");
+		const file = join(dir, "computer-use-kwin");
 		writeFileSync(file, "#!/bin/sh\nexit 0\n");
 		chmodSync(file, mode);
 		return file;
@@ -518,19 +522,19 @@ describe("findExecutableOnPath", () => {
 		const first = script(join(root, "a"), 0o755);
 		script(join(root, "b"), 0o755);
 		const path = [join(root, "a"), join(root, "b")].join(":");
-		expect(findExecutableOnPath(path, "computer-use-linux")).toBe(first);
+		expect(findExecutableOnPath(path, "computer-use-kwin")).toBe(first);
 	});
 
 	it("skips non-executable files, directories, and empty segments", () => {
 		script(join(root, "noexec"), 0o644);
-		mkdirSync(join(root, "dir", "computer-use-linux"), { recursive: true });
+		mkdirSync(join(root, "dir", "computer-use-kwin"), { recursive: true });
 		const wanted = script(join(root, "ok"), 0o755);
 		const path = ["", join(root, "noexec"), join(root, "dir"), "", join(root, "ok")].join(":");
-		expect(findExecutableOnPath(path, "computer-use-linux")).toBe(wanted);
+		expect(findExecutableOnPath(path, "computer-use-kwin")).toBe(wanted);
 	});
 
 	it("returns null when nothing on PATH matches", () => {
-		expect(findExecutableOnPath(join(root, "missing"), "computer-use-linux")).toBeNull();
-		expect(findExecutableOnPath(undefined, "computer-use-linux")).toBeNull();
+		expect(findExecutableOnPath(join(root, "missing"), "computer-use-kwin")).toBeNull();
+		expect(findExecutableOnPath(undefined, "computer-use-kwin")).toBeNull();
 	});
 });

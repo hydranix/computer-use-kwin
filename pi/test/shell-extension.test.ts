@@ -26,12 +26,12 @@ describe("shell-enabled native Pi catalog", () => {
 	});
 
 	it("wires run_shell through the shell catalog without inheriting unrelated secrets", async () => {
-		vi.stubEnv("COMPUTER_USE_LINUX_ENABLE_SHELL", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_BIN", process.execPath);
-		vi.stubEnv("COMPUTER_USE_LINUX_TEST_SECRET", "must-not-leak");
+		vi.stubEnv("COMPUTER_USE_KWIN_ENABLE_SHELL", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_BIN", process.execPath);
+		vi.stubEnv("COMPUTER_USE_KWIN_TEST_SECRET", "must-not-leak");
 		vi.resetModules();
 		const [
-			{ createComputerUseLinuxExtension },
+			{ createComputerUseKwinExtension },
 			{ GENERATED_SHELL_TOOL_CATALOG_HASH },
 		] = await Promise.all([
 			import("../extension/index.ts"),
@@ -45,14 +45,14 @@ describe("shell-enabled native Pi catalog", () => {
 			on() {},
 		} as unknown as ExtensionAPI;
 
-		createComputerUseLinuxExtension({
+		createComputerUseKwinExtension({
 			loadClientModule: () => ({
 				ComputerUseMcpClient: FakeShellClient as never,
 			}),
 		})(pi);
 
-		expect(tools.has("computer_use_linux_run_shell")).toBe(true);
-		const loader = tools.get("computer_use_linux_tools");
+		expect(tools.has("computer_use_kwin_run_shell")).toBe(true);
+		const loader = tools.get("computer_use_kwin_tools");
 		expect(loader?.parameters).toMatchObject({
 			properties: {
 				tools: {
@@ -62,7 +62,7 @@ describe("shell-enabled native Pi catalog", () => {
 				},
 			},
 		});
-		await tools.get("computer_use_linux_run_shell")!.execute(
+		await tools.get("computer_use_kwin_run_shell")!.execute(
 			"shell",
 			{ command: "printf ok" },
 			undefined,
@@ -72,12 +72,12 @@ describe("shell-enabled native Pi catalog", () => {
 		expect(FakeShellClient.options).toMatchObject({
 			expectedCatalogHash: GENERATED_SHELL_TOOL_CATALOG_HASH,
 			env: {
-				COMPUTER_USE_LINUX_ENABLE_SHELL: "1",
+				COMPUTER_USE_KWIN_ENABLE_SHELL: "1",
 			},
 		});
 		expect(
 			(FakeShellClient.options?.env as Record<string, string>)[
-				"COMPUTER_USE_LINUX_TEST_SECRET"
+				"COMPUTER_USE_KWIN_TEST_SECRET"
 			],
 		).toBeUndefined();
 		expect(FakeShellClient.calls).toEqual([

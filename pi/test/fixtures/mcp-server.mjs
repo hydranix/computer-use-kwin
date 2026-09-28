@@ -43,7 +43,7 @@ lines.on("line", (line) => {
 			result(message.id, {
 				protocolVersion: "2025-11-25",
 				capabilities: { tools: {} },
-				serverInfo: { name: "computer-use-linux", version },
+				serverInfo: { name: "computer-use-kwin", version },
 			});
 		}, initializeDelayMs);
 		return;

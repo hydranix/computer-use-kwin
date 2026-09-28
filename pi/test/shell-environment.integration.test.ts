@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const binary = process.env.COMPUTER_USE_LINUX_TEST_BINARY;
+const binary = process.env.COMPUTER_USE_KWIN_TEST_BINARY;
 
 describe.runIf(binary)("shell-enabled extension environment", () => {
 	afterEach(() => {
@@ -10,11 +10,11 @@ describe.runIf(binary)("shell-enabled extension environment", () => {
 	});
 
 	it("does not expose unrelated Pi secrets through the MCP parent process", async () => {
-		vi.stubEnv("COMPUTER_USE_LINUX_ENABLE_SHELL", "1");
-		vi.stubEnv("COMPUTER_USE_LINUX_BIN", binary!);
-		vi.stubEnv("COMPUTER_USE_LINUX_TEST_SECRET", "must-not-leak");
+		vi.stubEnv("COMPUTER_USE_KWIN_ENABLE_SHELL", "1");
+		vi.stubEnv("COMPUTER_USE_KWIN_BIN", binary!);
+		vi.stubEnv("COMPUTER_USE_KWIN_TEST_SECRET", "must-not-leak");
 		vi.resetModules();
-		const { createComputerUseLinuxExtension } = await import(
+		const { createComputerUseKwinExtension } = await import(
 			"../extension/index.ts"
 		);
 		const tools = new Map<string, ToolDefinition>();
@@ -29,13 +29,13 @@ describe.runIf(binary)("shell-enabled extension environment", () => {
 				handlers.set(event, entries);
 			},
 		} as unknown as ExtensionAPI;
-		createComputerUseLinuxExtension()(pi);
+		createComputerUseKwinExtension()(pi);
 
-		const result = await tools.get("computer_use_linux_run_shell")!.execute(
+		const result = await tools.get("computer_use_kwin_run_shell")!.execute(
 			"shell",
 			{
 				command:
-					"if tr '\\0' '\\n' < /proc/$PPID/environ | grep -q '^COMPUTER_USE_LINUX_TEST_SECRET='; then printf leaked; exit 9; else printf isolated; fi",
+					"if tr '\\0' '\\n' < /proc/$PPID/environ | grep -q '^COMPUTER_USE_KWIN_TEST_SECRET='; then printf leaked; exit 9; else printf isolated; fi",
 				timeout_seconds: 5,
 			},
 			undefined,

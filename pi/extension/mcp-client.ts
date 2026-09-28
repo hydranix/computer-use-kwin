@@ -162,7 +162,7 @@ export class ComputerUseMcpClient {
 	private async connect(): Promise<void> {
 		this.stderrTail = "";
 		const client = new Client({
-			name: "computer-use-linux-pi",
+			name: "computer-use-kwin-pi",
 			version: this.options.clientVersion,
 		});
 		const transport = new StdioClientTransport({
@@ -178,14 +178,14 @@ export class ComputerUseMcpClient {
 		try {
 			await client.connect(transport, this.requestOptions());
 			const server = client.getServerVersion();
-			if (server?.name !== "computer-use-linux") {
+			if (server?.name !== "computer-use-kwin") {
 				throw new Error(
 					`unexpected MCP server identity: ${server?.name ?? "unknown"}`,
 				);
 			}
 			if (server.version !== this.options.expectedServerVersion) {
 				throw new Error(
-					`computer-use-linux version ${server.version} does not match ` +
+					`computer-use-kwin version ${server.version} does not match ` +
 						`the Pi extension catalog version ${this.options.expectedServerVersion}`,
 				);
 			}
@@ -196,8 +196,8 @@ export class ComputerUseMcpClient {
 			const actualCatalogHash = catalogHash(tools.tools);
 			if (actualCatalogHash !== this.options.expectedCatalogHash) {
 				throw new Error(
-					"computer-use-linux tools do not match the Pi extension catalog; " +
-						"reinstall or update @agent-sh/computer-use-linux",
+					"computer-use-kwin tools do not match the Pi extension catalog; " +
+						"reinstall or update @hydranix/computer-use-kwin",
 				);
 			}
 			if (this.closed) {

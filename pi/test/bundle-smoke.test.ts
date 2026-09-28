@@ -9,7 +9,7 @@ import {
 } from "../extension/generated-tools.ts";
 
 const require = createRequire(import.meta.url);
-const binary = process.env.COMPUTER_USE_LINUX_TEST_BINARY;
+const binary = process.env.COMPUTER_USE_KWIN_TEST_BINARY;
 
 describe.runIf(binary)("generated MCP client bundle", () => {
 	it("connects to the real Rust server and calls doctor", async () => {
@@ -78,7 +78,7 @@ describe.runIf(binary)("generated MCP client bundle", () => {
 				(entry): entry is [string, string] => typeof entry[1] === "string",
 			),
 		);
-		env.COMPUTER_USE_LINUX_ENABLE_SHELL = "1";
+		env.COMPUTER_USE_KWIN_ENABLE_SHELL = "1";
 		const client = new module.ComputerUseMcpClient({
 			binaryPath: binary,
 			clientVersion: GENERATED_SERVER_VERSION,

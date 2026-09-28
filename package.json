@@ -35,8 +35,8 @@
   "files": [
     "LICENSE",
     "README.md",
-    "skills/computer-use-linux/SKILL.md",
-    "skills/computer-use-linux/references/",
+    "skills/computer-use-kwin/SKILL.md",
+    "skills/computer-use-kwin/references/",
     "npm/README.md",
     "npm/bin/computer-use-kwin.js",
     "npm/install.js",
@@ -47,7 +47,7 @@
   ],
   "pi": {
     "extensions": ["./pi/extension/index.ts"],
-    "skills": ["./skills/computer-use-linux/SKILL.md"]
+    "skills": ["./skills/computer-use-kwin/SKILL.md"]
   },
   "scripts": {
     "build:pi": "npm run build --prefix pi",

@@ -1,5 +1,5 @@
 /**
- * Native Pi integration for computer-use-linux.
+ * Native Pi integration for computer-use-kwin.
  *
  * Pi starts with one small loader tool. The real Computer Use tools remain
  * inactive until the loader enables them, then call one session-scoped MCP
@@ -34,10 +34,10 @@ import {
 } from "./generated-tools.ts";
 
 const require = createRequire(import.meta.url);
-const PACKAGE_NAME = "@agent-sh/computer-use-linux";
-const ACTIVE_TOOLS_ENTRY = "computer-use-linux-active-tools";
-const LOADER_TOOL_NAME = "computer_use_linux_tools";
-const TOOL_PREFIX = "computer_use_linux_";
+const PACKAGE_NAME = "@hydranix/computer-use-kwin";
+const ACTIVE_TOOLS_ENTRY = "computer-use-kwin-active-tools";
+const LOADER_TOOL_NAME = "computer_use_kwin_tools";
+const TOOL_PREFIX = "computer_use_kwin_";
 const DEFAULT_TOOLS = [
 	"doctor",
 	"list_windows",
@@ -49,7 +49,7 @@ const MAX_RESULT_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_RESULT_IMAGES = 4;
 const TRUNCATION_NOTICE =
 	"[Result truncated by the Pi extension. Request a smaller/bounded result.]";
-const SHELL_ENABLED = process.env.COMPUTER_USE_LINUX_ENABLE_SHELL === "1";
+const SHELL_ENABLED = process.env.COMPUTER_USE_KWIN_ENABLE_SHELL === "1";
 const AVAILABLE_MCP_TOOLS: readonly GeneratedMcpToolDefinition[] = SHELL_ENABLED
 	? [...GENERATED_MCP_TOOLS, ...GENERATED_OPTIONAL_MCP_TOOLS]
 	: GENERATED_MCP_TOOLS;
@@ -208,8 +208,8 @@ function runtimeEnvironment(): Record<string, string> {
 		"NIX_LD",
 		"NIX_LD_LIBRARY_PATH",
 		"RUST_LOG",
-		"COMPUTER_USE_LINUX_ENABLE_SHELL",
-		"COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT",
+		"COMPUTER_USE_KWIN_ENABLE_SHELL",
+		"COMPUTER_USE_KWIN_PORTAL_SCROLL_INVERT",
 		"CU_DISABLE_ABS_POINTER",
 	]);
 	return Object.fromEntries(
@@ -223,7 +223,7 @@ function runtimeEnvironment(): Record<string, string> {
 
 function defaultFindBinary(): BinaryLaunch | null {
 	const env = runtimeEnvironment();
-	const override = process.env.COMPUTER_USE_LINUX_BIN?.trim();
+	const override = process.env.COMPUTER_USE_KWIN_BIN?.trim();
 	if (override && executable(override)) {
 		return { binaryPath: override, env };
 	}
@@ -234,17 +234,17 @@ function defaultFindBinary(): BinaryLaunch | null {
 		"..",
 		"npm",
 		"bin",
-		`computer-use-linux-${process.platform}-${process.arch}`,
+		`computer-use-kwin-${process.platform}-${process.arch}`,
 	);
 	if (executable(bundledBinary)) {
 		return { binaryPath: bundledBinary, env };
 	}
 
-	// A temporary extension (`pi -e npm:@agent-sh/computer-use-linux`) is staged
+	// A temporary extension (`pi -e npm:@hydranix/computer-use-kwin`) is staged
 	// without the postinstall-downloaded platform binary, so fall back to a
 	// global npm or cargo install. The MCP client still checks the server
 	// version and tool catalog, so a mismatched install fails with that reason.
-	const onPath = findExecutableOnPath(process.env.PATH, "computer-use-linux");
+	const onPath = findExecutableOnPath(process.env.PATH, "computer-use-kwin");
 	if (onPath) {
 		return { binaryPath: onPath, env };
 	}
@@ -257,7 +257,7 @@ function defaultLoadClientModule(): NativeMcpClientModule {
 }
 
 function requestTimeoutMs(): number {
-	const value = Number(process.env.COMPUTER_USE_LINUX_TIMEOUT_MS ?? "60000");
+	const value = Number(process.env.COMPUTER_USE_KWIN_TIMEOUT_MS ?? "60000");
 	return Number.isFinite(value) && value > 0 ? value : 60_000;
 }
 
@@ -452,12 +452,12 @@ function hasLegacyRegistration(): boolean {
 function isNativeToolResult(
 	event: ToolResultEvent,
 ): event is ToolResultEvent & {
-	details: Record<string, unknown> & { computerUseLinux: true };
+	details: Record<string, unknown> & { computerUseKwin: true };
 } {
 	return (
 		event.toolName.startsWith(TOOL_PREFIX) &&
 		isRecord(event.details) &&
-		event.details.computerUseLinux === true
+		event.details.computerUseKwin === true
 	);
 }
 
@@ -481,14 +481,14 @@ function restoredNativeTools(ctx: ExtensionContext): string[] {
 	return [];
 }
 
-export function createComputerUseLinuxExtension(
+export function createComputerUseKwinExtension(
 	dependencies: ExtensionDependencies = {},
 ) {
 	const findBinary = dependencies.findBinary ?? defaultFindBinary;
 	const loadClientModule =
 		dependencies.loadClientModule ?? defaultLoadClientModule;
 
-	return function computerUseLinuxExtension(pi: ExtensionAPI) {
+	return function computerUseKwinExtension(pi: ExtensionAPI) {
 		let launch: BinaryLaunch | undefined;
 		let client: NativeMcpClient | undefined;
 		let enabledNativeTools = new Set<string>();
@@ -505,8 +505,8 @@ export function createComputerUseLinuxExtension(
 			const resolved = resolveLaunch();
 			if (!resolved) {
 				throw new Error(
-					"computer-use-linux binary was not found. Reinstall " +
-						`${PACKAGE_NAME}, install computer-use-linux on PATH, or set COMPUTER_USE_LINUX_BIN.`,
+					"computer-use-kwin binary was not found. Reinstall " +
+						`${PACKAGE_NAME}, install computer-use-kwin on PATH, or set COMPUTER_USE_KWIN_BIN.`,
 				);
 			}
 			const { ComputerUseMcpClient } = loadClientModule();
@@ -540,7 +540,7 @@ export function createComputerUseLinuxExtension(
 					return {
 						content: convertMcpResult(result),
 						details: {
-							computerUseLinux: true,
+							computerUseKwin: true,
 							mcpIsError: result.isError === true,
 							tool: tool.name,
 						},
@@ -558,8 +558,8 @@ export function createComputerUseLinuxExtension(
 			promptSnippet:
 				"Enable Linux desktop tools only when the task needs local GUI observation or control",
 			promptGuidelines: [
-				"Use computer_use_linux_tools before attempting local Linux GUI observation or control.",
-				"After enabling Computer Use tools, begin with computer_use_linux_get_app_state; use computer_use_linux_list_windows or computer_use_linux_focused_window before targeted keyboard input, and re-observe after the UI changes.",
+				"Use computer_use_kwin_tools before attempting local Linux GUI observation or control.",
+				"After enabling Computer Use tools, begin with computer_use_kwin_get_app_state; use computer_use_kwin_list_windows or computer_use_kwin_focused_window before targeted keyboard input, and re-observe after the UI changes.",
 			],
 			parameters: LoaderParameters,
 			async execute(_toolCallId, params) {
@@ -624,7 +624,7 @@ export function createComputerUseLinuxExtension(
 
 			if (!resolveLaunch() && ctx.hasUI) {
 				ctx.ui.notify(
-					`${PACKAGE_NAME}: binary not found; reinstall the package, install computer-use-linux on PATH, or set COMPUTER_USE_LINUX_BIN.`,
+					`${PACKAGE_NAME}: binary not found; reinstall the package, install computer-use-kwin on PATH, or set COMPUTER_USE_KWIN_BIN.`,
 					"warning",
 				);
 			}
@@ -654,4 +654,4 @@ export function createComputerUseLinuxExtension(
 	};
 }
 
-export default createComputerUseLinuxExtension();
+export default createComputerUseKwinExtension();

@@ -9,7 +9,7 @@ export interface GeneratedMcpToolDefinition {
 
 export const GENERATED_SERVER_VERSION = "0.7.4";
 export const GENERATED_TOOL_CATALOG_HASH = "3c942d0c78f6ff05447100733a6ddc5db2497d52edebe9749eedfafb4a6697be";
-export const GENERATED_SHELL_TOOL_CATALOG_HASH = "157777e9069603d6dba6153ea823c1a548d6261c761ac65ec8fb06403e915651";
+export const GENERATED_SHELL_TOOL_CATALOG_HASH = "88905681904b2fcddea93d3438c6cdca2ad8ec1c63cab856bc4736e7394c1b12";
 export const GENERATED_MCP_TOOLS =
 [
   {
@@ -1260,7 +1260,7 @@ export const GENERATED_OPTIONAL_MCP_TOOLS =
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Execute one explicitly approved /bin/sh command with same-user host authority. This tool is absent unless the server operator starts computer-use-linux with COMPUTER_USE_LINUX_ENABLE_SHELL=1. It is not sandboxed: the command can read or modify files and use the network with the server user's permissions. The inherited environment is cleared to a small desktop/runtime allowlist; pass any additional variables explicitly. Execution time and output are bounded: returned streams are truncated to 512 KiB, while a stream exceeding the 8 MiB collection ceiling fails the call without returning partial output. An audit digest is written to server stderr.",
+    "description": "Execute one explicitly approved /bin/sh command with same-user host authority. This tool is absent unless the server operator starts computer-use-kwin with COMPUTER_USE_KWIN_ENABLE_SHELL=1. It is not sandboxed: the command can read or modify files and use the network with the server user's permissions. The inherited environment is cleared to a small desktop/runtime allowlist; pass any additional variables explicitly. Execution time and output are bounded: returned streams are truncated to 512 KiB, while a stream exceeding the 8 MiB collection ceiling fails the call without returning partial output. An audit digest is written to server stderr.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {

@@ -1,42 +1,59 @@
 ---
-name: computer-use-linux
-description: "Linux desktop observation and control for KDE Plasma 6 on Wayland via native Pi tools or the computer-use-linux MCP server."
+name: computer-use-kwin
+description: "Linux desktop observation and control for KDE Plasma 6 on Wayland via native Pi tools or the computer-use-kwin MCP server."
 author: agent-sh
 license: MIT
 platforms: [linux]
 compatibility: "Native Pi tools require Pi 0.84.4+ and Node.js 22.19+; the standalone CLI/MCP server supports Node.js 18+."
 ---
 
-# computer-use-linux
+# computer-use-kwin
 
-Use `computer-use-linux` to observe or operate a KDE Plasma 6 Wayland desktop:
+Use `computer-use-kwin` to observe or operate a KDE Plasma 6 Wayland desktop:
 read application accessibility state, take screenshots, inspect and control
 windows, click, scroll, type, press keys, or invoke AT-SPI actions.
 
 ## Install
 
-### Pi native tools
+The npm and crates.io packages are not published yet. These registry install
+commands are for a future release; use a source checkout in the meantime.
+
+Build the MCP server from the repository root:
 
 ```bash
-pi install npm:@agent-sh/computer-use-linux
+cargo build --locked
+target/debug/computer-use-kwin doctor | jq .readiness
 ```
 
-This enables Pi's `computer_use_linux_*` tools. It does not put
-`computer-use-linux` on `PATH`; shell commands below need the CLI install.
+### Pi native tools
+
+From the same checkout, start Pi with the native extension and point it at the
+built server:
+
+```bash
+COMPUTER_USE_KWIN_BIN="$PWD/target/debug/computer-use-kwin" \
+  pi -e "$PWD/pi/extension/index.ts"
+```
+
+This enables Pi's `computer_use_kwin_*` tools. It does not put
+`computer-use-kwin` on `PATH`; shell commands below need the CLI install.
 
 ### Shell CLI / MCP server
 
 ```bash
-npm install -g @agent-sh/computer-use-linux
-computer-use-linux doctor | jq .readiness
+npm install -g @hydranix/computer-use-kwin
+computer-use-kwin doctor | jq .readiness
 ```
 
 Rust users can install from crates.io:
 
 ```bash
-cargo install computer-use-linux
-computer-use-linux doctor | jq .readiness
+cargo install computer-use-kwin
+computer-use-kwin doctor | jq .readiness
 ```
+
+The npm and Cargo commands above will work after the corresponding package is
+published. Until then, build the server from source as shown above.
 
 Provide the system-level GTK/AT-SPI prerequisites required by your applications.
 There is no application accessibility setup command. XDG portals provide
@@ -51,7 +68,7 @@ Direct uinput provides an absolute-pointer fallback and does not require
 `ydotoold`. KWin scripting is the sole window-management backend for discovery,
 focus, activation, move, and resize operations.
 
-For MCP hosts with `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1`, call the optional
+For MCP hosts with `COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE=1`, call the optional
 `complete_interaction` tool once after finishing desktop interaction. A skipped
 cue is not a task failure. This notification does not guarantee exclusive
 desktop ownership or that other clients have stopped sending input.
@@ -63,13 +80,13 @@ Configure the binary as a stdio MCP server:
 
 ```json
 {
-  "command": "computer-use-linux",
+  "command": "computer-use-kwin",
   "args": ["mcp"]
 }
 ```
 
 If the binary is not on `PATH`, use its absolute path (typically
-`~/.local/bin/computer-use-linux` or the npm global bin directory). Pi native
+`~/.local/bin/computer-use-kwin` or the npm global bin directory). Pi native
 tools do not need this MCP configuration; see
 [Pi setup](references/pi-setup.md).
 
@@ -80,8 +97,8 @@ tools do not need this MCP configuration; see
 
 ## Procedure
 
-1. In Pi, call `computer_use_linux_tools` with the exact tools or capability you
-   need. Enabled tools use the `computer_use_linux_<name>` prefix, appear
+1. In Pi, call `computer_use_kwin_tools` with the exact tools or capability you
+   need. Enabled tools use the `computer_use_kwin_<name>` prefix, appear
    starting on the next model turn, and remain active for the session.
 2. Begin each desktop-control turn with `get_app_state`, scoped to the app you
    are working in. Pass `app_name_or_bundle_identifier` or a window target
@@ -137,16 +154,16 @@ event to report `hit: true`.
   its socket under `/run/user/$UID`, not as a system-wide service.
 - The optional ydotool backend requires version 1.0.3 or newer; `doctor`
   rejects older or semantically incompatible CLIs even when `ydotoold` runs.
-- On Wayland, `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` opts into reusing portal restore tokens across processes. The first permission dialog still appears; unset is the default and prompts for each new process. Tokens are stored in the user state directory with mode `0600`.
+- On Wayland, `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP=1` opts into reusing portal restore tokens across processes. The first permission dialog still appears; unset is the default and prompts for each new process. Tokens are stored in the user state directory with mode `0600`.
 
 ## Verification
 
-Pi-only installs: enable and call `computer_use_linux_doctor` as in
-[Pi setup](references/pi-setup.md). Shell `computer-use-linux doctor` needs
+Pi-only installs: enable and call `computer_use_kwin_doctor` as in
+[Pi setup](references/pi-setup.md). Shell `computer-use-kwin doctor` needs
 the CLI on `PATH`.
 
 ```bash
-computer-use-linux doctor | jq .readiness
+computer-use-kwin doctor | jq .readiness
 ```
 
 Check that the readiness report lists the needed capabilities without
