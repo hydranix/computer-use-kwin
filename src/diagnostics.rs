@@ -1,7 +1,4 @@
-use crate::windowing::registry::{
-    self, COSMIC_WAYLAND_BACKEND, GNOME_SHELL_EXTENSION_BACKEND, GNOME_SHELL_INTROSPECT_BACKEND,
-    HYPRLAND_BACKEND, I3_BACKEND, KWIN_BACKEND, X11_BACKEND,
-};
+use crate::windowing::registry::{self, KWIN_BACKEND};
 use crate::ydotool;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -135,11 +132,7 @@ pub struct AccessibilityReport {
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct WindowingReport {
-    pub gnome_shell_introspect: Check,
-    pub computer_use_linux_gnome_shell_extension: Check,
-    pub cosmic_helper: Check,
     pub kwin: Check,
-    pub hyprland: Check,
     pub backends: BTreeMap<String, Check>,
     pub can_list_windows: bool,
     pub can_focus_apps: bool,
@@ -315,43 +308,8 @@ fn capability_map_with_portal_keyboard(
     let screenshot_backends = screenshot_backends(platform, portals);
 
     let mut window_backends = Vec::new();
-    let x11_available = windowing
-        .backends
-        .get(X11_BACKEND)
-        .is_some_and(|check| check.ok);
-    let prefer_x11_over_introspect = windowing.gnome_shell_introspect.ok
-        && x11_available
-        && registry::backend_can_exact_focus(X11_BACKEND);
-    if windowing.computer_use_linux_gnome_shell_extension.ok {
-        window_backends.push("gnome_shell_extension".to_string());
-    }
-    if prefer_x11_over_introspect {
-        window_backends.push(X11_BACKEND.to_string());
-    }
-    if windowing.gnome_shell_introspect.ok {
-        window_backends.push("gnome_introspect".to_string());
-    }
-    if windowing.cosmic_helper.ok {
-        window_backends.push("cosmic".to_string());
-    }
     if windowing.kwin.ok {
-        window_backends.push("kwin".to_string());
-    }
-    if windowing.hyprland.ok {
-        window_backends.push("hyprland".to_string());
-    }
-    // i3 and the generic X11/EWMH backend have no dedicated
-    // WindowingReport field; read them from the probe map so the capability
-    // list matches the registry order.
-    if windowing
-        .backends
-        .get(I3_BACKEND)
-        .is_some_and(|check| check.ok)
-    {
-        window_backends.push(I3_BACKEND.to_string());
-    }
-    if x11_available && !prefer_x11_over_introspect {
-        window_backends.push(X11_BACKEND.to_string());
+        window_backends.push(KWIN_BACKEND.to_string());
     }
 
     let mut accessibility_backends = Vec::new();
@@ -774,7 +732,7 @@ fn accessibility_report() -> AccessibilityReport {
     }
 }
 
-fn windowing_report(platform: &PlatformReport) -> WindowingReport {
+fn windowing_report(_platform: &PlatformReport) -> WindowingReport {
     let probes = registry::probe_backends();
     let backend_check = |id: &str| {
         probes
@@ -783,11 +741,7 @@ fn windowing_report(platform: &PlatformReport) -> WindowingReport {
             .map(check_from_backend_probe)
             .unwrap_or_else(|| Check::fail("backend probe did not run"))
     };
-    let gnome_shell_introspect = backend_check(GNOME_SHELL_INTROSPECT_BACKEND);
-    let computer_use_linux_gnome_shell_extension = backend_check(GNOME_SHELL_EXTENSION_BACKEND);
-    let cosmic_helper = backend_check(COSMIC_WAYLAND_BACKEND);
     let kwin = backend_check(KWIN_BACKEND);
-    let hyprland = backend_check(HYPRLAND_BACKEND);
     let backends = probes
         .iter()
         .map(|probe| (probe.id.to_string(), check_from_backend_probe(probe)))
@@ -795,34 +749,25 @@ fn windowing_report(platform: &PlatformReport) -> WindowingReport {
     let can_list_windows = probes.iter().any(|probe| probe.can_list_windows);
     let can_focus_apps = probes.iter().any(|probe| probe.can_focus_apps);
     let can_focus_windows = probes.iter().any(|probe| probe.can_focus_windows);
-    let note = if can_list_windows {
-        if !can_focus_windows {
-            "A window listing backend is available for list_windows, but focused-window and targeted-input verification are unavailable (for example wmctrl is present but xprop is missing on X11)."
-        } else if cosmic_helper.ok && is_cosmic_wayland_platform(platform) {
-            "A COSMIC Wayland window backend is available for list_windows, focused_window, and targeted input verification."
-        } else if kwin.ok {
-            "A KWin/Plasma window backend is available for list_windows, focused_window, and targeted input verification."
-        } else if hyprland.ok {
-            "A Hyprland window backend is available for list_windows, focused_window, and targeted input verification."
-        } else {
-            "A window listing backend is available for list_windows, focused_window, and targeted input verification."
-        }
-    } else {
-        "Window listing is unavailable or denied. Computer Use can still use screenshots, AT-SPI, and global ydotool input, but targeted window input cannot be verified. On GNOME, run setup_window_targeting to install the optional GNOME Shell extension backend. On COSMIC, ensure the bundled COSMIC helper is present and can connect to the session. On KDE/Plasma, ensure KWin exposes org.kde.KWin scripting on the session bus. On Hyprland, ensure hyprctl is available in the session."
-    }
-    .to_string();
+    let note = windowing_note(can_list_windows, can_focus_windows).to_string();
 
     WindowingReport {
-        gnome_shell_introspect,
-        computer_use_linux_gnome_shell_extension,
-        cosmic_helper,
         kwin,
-        hyprland,
         backends,
         can_list_windows,
         can_focus_apps,
         can_focus_windows,
         note,
+    }
+}
+
+fn windowing_note(can_list_windows: bool, can_focus_windows: bool) -> &'static str {
+    if can_list_windows && !can_focus_windows {
+        "A KWin/Plasma window backend is available for listing windows, but focused-window and targeted-input verification are unavailable."
+    } else if can_list_windows {
+        "A KWin/Plasma window backend is available for list_windows, focused_window, and targeted input verification."
+    } else {
+        "KWin window listing is unavailable or denied. Computer Use can still use screenshots, AT-SPI, and global input, but targeted window input cannot be verified. Ensure KWin exposes org.kde.KWin scripting on the session bus."
     }
 }
 
@@ -910,12 +855,10 @@ fn readiness_report_with_portal_keyboard(
     }
 
     if !can_query_windows {
-        blockers.push(if is_cosmic_wayland_platform(platform) {
-            "COSMIC Wayland window introspection is unavailable; targeted window focus and verification will be disabled.".to_string()
-        } else {
-            "Window introspection is unavailable; targeted window focus and verification will be disabled."
-                .to_string()
-        });
+        blockers.push(
+            "KWin window introspection is unavailable; targeted window focus and verification will be disabled."
+                .to_string(),
+        );
     }
 
     if can_query_windows && !can_focus_windows {
@@ -1002,14 +945,6 @@ fn portal_keyboard_input_available(
     remote_desktop_keyboard: &Check,
 ) -> bool {
     platform_is_wayland(platform) && remote_desktop_keyboard.ok
-}
-
-fn is_cosmic_wayland_platform(platform: &PlatformReport) -> bool {
-    platform
-        .xdg_current_desktop
-        .as_deref()
-        .is_some_and(|desktop| desktop.to_ascii_lowercase().contains("cosmic"))
-        && platform.xdg_session_type.as_deref() == Some("wayland")
 }
 
 fn can_build_accessibility_tree(accessibility: &AccessibilityReport) -> bool {
@@ -1611,25 +1546,75 @@ mod tests {
 
     fn windowing_report(can_list_windows: bool, can_focus_windows: bool) -> WindowingReport {
         WindowingReport {
-            gnome_shell_introspect: if can_list_windows {
-                Check::ok("ok")
-            } else {
-                Check::fail("denied")
-            },
-            computer_use_linux_gnome_shell_extension: if can_focus_windows {
-                Check::ok("ok")
-            } else {
-                Check::fail("missing")
-            },
-            cosmic_helper: Check::fail("missing"),
             kwin: Check::fail("not a KWin session"),
-            hyprland: Check::fail("not a Hyprland session"),
             backends: BTreeMap::new(),
             can_list_windows,
             can_focus_apps: true,
             can_focus_windows,
             note: String::new(),
         }
+    }
+
+    #[test]
+    fn windowing_report_exposes_only_kwin() {
+        let mut windowing = windowing_report(true, true);
+        windowing
+            .backends
+            .insert("kwin".to_string(), Check::ok("KWin scripting is available"));
+        let value = serde_json::to_value(&windowing).unwrap();
+        let fields = value.as_object().unwrap();
+
+        assert_eq!(
+            fields.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "backends",
+                "can_focus_apps",
+                "can_focus_windows",
+                "can_list_windows",
+                "kwin",
+                "note",
+            ]
+        );
+        assert_eq!(
+            value["backends"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["kwin"]
+        );
+    }
+
+    #[test]
+    fn windowing_report_does_not_claim_focus_when_only_listing_is_available() {
+        assert_eq!(
+            super::windowing_note(true, false),
+            "A KWin/Plasma window backend is available for listing windows, but focused-window and targeted-input verification are unavailable."
+        );
+    }
+
+    #[test]
+    fn window_control_capabilities_advertise_only_kwin() {
+        let platform = platform_report();
+        let portals = portal_report(Check::fail("missing"));
+        let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
+        let mut windowing = windowing_report(true, true);
+        windowing.backends = [
+            ("kwin".to_string(), Check::ok("available")),
+            ("other-backend".to_string(), Check::ok("available")),
+        ]
+        .into();
+        windowing.kwin = Check::ok("available");
+        let input = input_report(false);
+
+        let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
+
+        assert_eq!(capabilities.window_control, ["kwin"]);
+        assert_eq!(
+            capabilities.preferred.window_control.as_deref(),
+            Some("kwin")
+        );
     }
 
     fn input_report(can_send_input: bool) -> InputReport {
@@ -2544,9 +2529,8 @@ mod tests {
     }
 
     #[test]
-    fn readiness_reports_cosmic_window_blocker_on_cosmic() {
-        let mut platform = platform_report();
-        platform.xdg_current_desktop = Some("COSMIC".to_string());
+    fn readiness_reports_kwin_window_blocker() {
+        let platform = platform_report();
         let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
         let windowing = windowing_report(false, false);
         let input = input_report(true);
@@ -2562,6 +2546,6 @@ mod tests {
         assert!(readiness
             .blockers
             .iter()
-            .any(|blocker| blocker.contains("COSMIC Wayland window introspection")));
+            .any(|blocker| blocker.contains("KWin window introspection")));
     }
 }

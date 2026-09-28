@@ -5,7 +5,6 @@ use crate::atspi_tree::{
     AccessibleAppSummary, Bounds, FocusProbe, FocusedElementSummary, ValueSetInvocation,
 };
 use crate::diagnostics::{doctor_report, setup_accessibility_report, DoctorReport, SetupReport};
-use crate::gnome_extension::{setup_window_targeting_report, WindowTargetingSetupReport};
 use crate::remote_desktop::{
     click as portal_click, drag as portal_drag, keysyms_for_text, press_keycode_chord,
     scroll as portal_scroll, start_portal_keyboard_session, start_portal_pointer_session,
@@ -19,8 +18,8 @@ use crate::screenshot::{
 use crate::terminal::{terminal_paste_shortcut, TerminalPasteShortcut};
 use crate::windowing::registry;
 use crate::windows::{
-    focus_window_target, focused_window, list_windows, resolve_window_target,
-    window_permission_hint, WindowFocusResult, WindowInfo, WindowTarget, KWIN_BACKEND,
+    focus_window_target, focused_window, kwin_window_permission_hint, list_windows,
+    resolve_window_target, WindowFocusResult, WindowInfo, WindowTarget, KWIN_BACKEND,
 };
 use crate::ydotool;
 use anyhow::Result;
@@ -200,20 +199,6 @@ impl ComputerUseLinux {
     }
 
     #[tool(
-        name = "setup_window_targeting",
-        description = "Install and enable the optional GNOME Shell extension used for exact window list/focus targeting when GNOME blocks native introspection.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn setup_window_targeting(&self) -> Json<WindowTargetingSetupReport> {
-        Json(setup_window_targeting_report().await)
-    }
-
-    #[tool(
         name = "list_apps",
         description = "List running Linux desktop app candidates visible to the Computer Use backend.",
         annotations(
@@ -280,7 +265,7 @@ impl ComputerUseLinux {
                 Json(FocusedWindowOutput {
                     backend: KWIN_BACKEND.to_string(),
                     focused_window: None,
-                    permissions_hint: window_permission_hint(&error),
+                    permissions_hint: kwin_window_permission_hint(&error),
                     error: Some(error),
                     message: "Focused window query failed; targeted keyboard input is unavailable until window introspection works.".to_string(),
                 })
@@ -324,7 +309,7 @@ impl ComputerUseLinux {
                     implemented: true,
                     backend: KWIN_BACKEND.to_string(),
                     focus: None,
-                    permissions_hint: window_permission_hint(&error),
+                    permissions_hint: kwin_window_permission_hint(&error),
                     error: Some(error),
                     received,
                 })
@@ -1898,7 +1883,7 @@ impl ComputerUseLinux {
     // can't be env!("CARGO_PKG_VERSION"); the MCP safety check (CI) fails the
     // build if it drifts from the Cargo version.
     version = "0.7.4",
-    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If diagnostics report disabled GNOME accessibility, call setup_accessibility before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. If diagnostics report windowing.can_list_windows=false on GNOME, call setup_window_targeting to install the optional GNOME Shell extension backend, then ask the user to log out and back in if the setup report says a shell reload is required. This Linux backend can capture size-bounded screenshots through GNOME Shell or XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus compositor windows through registered Linux window backends when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland or through portal keysyms on other Wayland sessions before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use move_window/resize_window (GNOME Shell extension backend) to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Scope get_app_state with app_name_or_bundle_identifier or a window target (window_id, pid, app_id, wm_class, title); without one it returns the whole desktop AT-SPI tree, reports tree_scoped=false, and warns in message, which can flood context. accessibility_tree_truncated=true means the node, depth, or read budget stopped traversal with unread elements left; recover by scoping to a narrower app or window target and raising max_nodes or max_depth (hard caps 2000 and 64), not by lowering max_nodes. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
+    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If diagnostics report disabled GNOME accessibility, call setup_accessibility before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. This KDE Plasma 6 Wayland backend uses KWin for window listing, focus, and targeting; if KWin window introspection is unavailable, ensure org.kde.KWin scripting is exposed on the session bus. The backend can capture size-bounded screenshots through XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus KWin windows when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use KWin move_window/resize_window to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Scope get_app_state with app_name_or_bundle_identifier or a window target (window_id, pid, app_id, wm_class, title); without one it returns the whole desktop AT-SPI tree, reports tree_scoped=false, and warns in message, which can flood context. accessibility_tree_truncated=true means the node, depth, or read budget stopped traversal with unread elements left; recover by scoping to a narrower app or window target and raising max_nodes or max_depth (hard caps 2000 and 64), not by lowering max_nodes. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
 )]
 impl ServerHandler for ComputerUseLinux {}
 
@@ -3121,7 +3106,7 @@ impl ComputerUseLinux {
             },
             Err(error) => {
                 let error = format!("{error:#}");
-                let hint = window_permission_hint(&error);
+                let hint = kwin_window_permission_hint(&error);
                 (None, Some(error), hint)
             }
         }
@@ -3301,7 +3286,7 @@ impl ComputerUseLinux {
 
         let focus = focus_window_target(target).await.map_err(|error| {
             let error = format!("{error:#}");
-            if let Some(hint) = window_permission_hint(&error) {
+            if let Some(hint) = kwin_window_permission_hint(&error) {
                 format!("Did not send input because the target window could not be focused: {error}. {hint}")
             } else {
                 format!("Did not send input because the target window could not be focused: {error}")
@@ -3476,7 +3461,7 @@ impl ComputerUseLinux {
                     backend: "unknown".to_string(),
                     window: None,
                     message: format!("Window listing failed: {error}"),
-                    permissions_hint: window_permission_hint(&error),
+                    permissions_hint: kwin_window_permission_hint(&error),
                     received,
                 });
             }
@@ -3529,7 +3514,7 @@ impl ComputerUseLinux {
                     implemented: true,
                     backend,
                     window: None,
-                    permissions_hint: window_permission_hint(&error),
+                    permissions_hint: kwin_window_permission_hint(&error),
                     message: error,
                     received,
                 })
@@ -4775,7 +4760,7 @@ async fn window_list_output() -> ListWindowsOutput {
             ListWindowsOutput {
                 backend: KWIN_BACKEND.to_string(),
                 windows: Vec::new(),
-                permissions_hint: window_permission_hint(&error),
+                permissions_hint: kwin_window_permission_hint(&error),
                 error: Some(error),
                 note: "Window listing failed, so targeted keyboard input cannot safely focus or verify a target window."
                     .to_string(),
@@ -5820,6 +5805,16 @@ mod tests {
         assert_eq!(value["annotations"]["destructiveHint"], false);
         assert_eq!(value["annotations"]["idempotentHint"], false);
         assert_eq!(value["annotations"]["openWorldHint"], true);
+    }
+
+    #[test]
+    fn accessibility_setup_remains_exposed_without_gnome_window_setup() {
+        let tools = ComputerUseLinux::default().mcp_tool_router().list_all();
+
+        assert!(tools.iter().any(|tool| tool.name == "setup_accessibility"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool.name == "setup_window_targeting"));
     }
 
     #[tokio::test]

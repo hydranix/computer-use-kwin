@@ -1,4 +1,4 @@
-use crate::{abs_pointer, atspi_tree, diagnostics, gnome_extension, screenshot, server, windows};
+use crate::{abs_pointer, atspi_tree, diagnostics, screenshot, server, windows};
 use anyhow::{Context, Result};
 
 pub(crate) async fn run_from_env() -> Result<()> {
@@ -111,20 +111,11 @@ pub(crate) async fn run_from_env() -> Result<()> {
                         "backend": "unavailable",
                         "windows": [],
                         "error": error,
-                        "permissions_hint": windows::window_permission_hint(&error),
+                        "permissions_hint": windows::kwin_window_permission_hint(&error),
                     })
                 }
             };
             println!("{}", serde_json::to_string_pretty(&report)?);
-            Ok(())
-        }
-        Some("setup-window-targeting") => {
-            let report = gnome_extension::setup_window_targeting_report().await;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&report)
-                    .context("failed to serialize window targeting setup report")?
-            );
             Ok(())
         }
         Some("--help") | Some("-h") => {
@@ -133,7 +124,7 @@ pub(crate) async fn run_from_env() -> Result<()> {
         }
         Some(command) => {
             anyhow::bail!(
-                "unknown command '{command}'. Expected one of: mcp, doctor, setup, guard-accessibility, apps, state, screenshot, windows, setup-window-targeting"
+                "unknown command '{command}'. Expected one of: mcp, doctor, setup, guard-accessibility, apps, state, screenshot, windows"
             );
         }
         None => {
@@ -161,7 +152,7 @@ fn abs_test_report(
 fn print_help() {
     println!("guard-accessibility: explicit foreground accessibility hold-open; stop with Ctrl-C or SIGTERM before disabling accessibility.\n");
     println!(
-        "computer-use-linux\n\nUsage:\n  computer-use-linux mcp\n  computer-use-linux doctor\n  computer-use-linux setup\n  computer-use-linux setup-window-targeting\n  computer-use-linux apps\n  computer-use-linux state [APP_NAME]\n  computer-use-linux screenshot\n  computer-use-linux windows"
+        "computer-use-linux\n\nUsage:\n  computer-use-linux mcp\n  computer-use-linux doctor\n  computer-use-linux setup\n  computer-use-linux apps\n  computer-use-linux state [APP_NAME]\n  computer-use-linux screenshot\n  computer-use-linux windows"
     );
 }
 

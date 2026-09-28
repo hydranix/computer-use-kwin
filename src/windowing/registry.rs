@@ -4,14 +4,7 @@ use anyhow::{anyhow, Result};
 
 pub use kwin::KWIN_BACKEND;
 
-pub(crate) const GNOME_SHELL_EXTENSION_BACKEND: &str = "gnome-shell-extension";
-pub(crate) const GNOME_SHELL_INTROSPECT_BACKEND: &str = "gnome-shell-introspect";
-pub(crate) const COSMIC_WAYLAND_BACKEND: &str = "cosmic-wayland";
-pub(crate) const HYPRLAND_BACKEND: &str = "hyprland";
-pub(crate) const I3_BACKEND: &str = "i3";
-pub(crate) const X11_BACKEND: &str = "x11";
-
-pub const WINDOW_PERMISSION_HINT: &str =
+pub const KWIN_WINDOW_PERMISSION_HINT: &str =
     "KWin scripting is unavailable. Ensure org.kde.KWin scripting is exposed on the session bus.";
 
 #[derive(Debug, Clone, Copy)]
@@ -181,7 +174,7 @@ mod tests {
 
     #[tokio::test]
     async fn unsupported_backend_ids_fail_explicitly() {
-        let unsupported = window(GNOME_SHELL_EXTENSION_BACKEND);
+        let unsupported = window("gnome-shell-extension");
 
         assert!(activate_window(&unsupported)
             .await

@@ -18,7 +18,6 @@ from typing import Any
 EXPECTED_TOOLS = {
     "doctor",
     "setup_accessibility",
-    "setup_window_targeting",
     "list_apps",
     "get_app_state",
     "list_windows",
@@ -109,7 +108,6 @@ NON_DESTRUCTIVE_MUTATING_TOOLS = EXPECTED_TOOLS - READ_ONLY_TOOLS - DESTRUCTIVE_
 
 IDEMPOTENT_TOOLS = READ_ONLY_TOOLS | {
     "setup_accessibility",
-    "setup_window_targeting",
     "activate_window",
     "move_window",
     "resize_window",
@@ -118,7 +116,6 @@ IDEMPOTENT_TOOLS = READ_ONLY_TOOLS | {
 OPEN_WORLD_TOOLS = (EXPECTED_TOOLS | {SHELL_TOOL, COMPLETION_TOOL}) - {
     "doctor",
     "setup_accessibility",
-    "setup_window_targeting",
 }
 
 

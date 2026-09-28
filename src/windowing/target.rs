@@ -1,4 +1,4 @@
-use crate::windowing::registry::{self, WINDOW_PERMISSION_HINT};
+use crate::windowing::registry::{self, KWIN_WINDOW_PERMISSION_HINT};
 use crate::windowing::types::{WindowFocusResult, WindowInfo, WindowTarget};
 use anyhow::{bail, Result};
 use std::future::Future;
@@ -363,7 +363,7 @@ fn optional_title_match(actual: &Option<String>, requested: Option<&str>) -> boo
     })
 }
 
-pub fn window_permission_hint(error: &str) -> Option<String> {
+pub fn kwin_window_permission_hint(error: &str) -> Option<String> {
     let lower = error.to_ascii_lowercase();
     if lower.contains("accessdenied")
         || lower.contains("access denied")
@@ -371,7 +371,7 @@ pub fn window_permission_hint(error: &str) -> Option<String> {
         || lower.contains("operation not permitted")
         || lower.contains("failed to connect to session bus")
     {
-        Some(WINDOW_PERMISSION_HINT.to_string())
+        Some(KWIN_WINDOW_PERMISSION_HINT.to_string())
     } else {
         None
     }

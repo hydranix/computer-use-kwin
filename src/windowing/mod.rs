@@ -4,11 +4,11 @@ pub mod target;
 pub mod types;
 
 #[allow(unused_imports)]
-pub use registry::{KWIN_BACKEND, WINDOW_PERMISSION_HINT};
+pub use registry::{KWIN_BACKEND, KWIN_WINDOW_PERMISSION_HINT};
 #[allow(unused_imports)]
 pub use target::{
-    focus_window_target, focused_window, list_windows, resolve_window_target,
-    window_permission_hint,
+    focus_window_target, focused_window, kwin_window_permission_hint, list_windows,
+    resolve_window_target,
 };
 #[allow(unused_imports)]
 pub use types::{WindowBounds, WindowFocusResult, WindowInfo, WindowTarget};
@@ -395,9 +395,9 @@ mod tests {
 
     #[test]
     fn maps_session_bus_errors_to_kwin_permission_hint() {
-        let hint = window_permission_hint("failed to connect to session bus");
+        let hint = kwin_window_permission_hint("failed to connect to session bus");
 
-        assert_eq!(hint.as_deref(), Some(WINDOW_PERMISSION_HINT));
+        assert_eq!(hint.as_deref(), Some(KWIN_WINDOW_PERMISSION_HINT));
     }
 
     #[test]
