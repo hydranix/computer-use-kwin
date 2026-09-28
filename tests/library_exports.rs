@@ -1,4 +1,4 @@
-use computer_use_linux::{
+use computer_use_kwin::{
     atspi_tree::{snapshot_tree, AccessibilityNode},
     diagnostics::{doctor_report, hydrate_session_bus_env, Check, DoctorReport},
     screenshot::{capture_screenshot_raw, RawScreenshotCapture},

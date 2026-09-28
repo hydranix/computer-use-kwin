@@ -141,7 +141,7 @@ fn abs_test_report(
 
 fn print_help() {
     println!(
-        "computer-use-linux\n\nUsage:\n  computer-use-linux mcp\n  computer-use-linux doctor\n  computer-use-linux apps\n  computer-use-linux state [APP_NAME]\n  computer-use-linux screenshot\n  computer-use-linux windows"
+        "computer-use-kwin\n\nUsage:\n  computer-use-kwin mcp\n  computer-use-kwin doctor\n  computer-use-kwin apps\n  computer-use-kwin state [APP_NAME]\n  computer-use-kwin screenshot\n  computer-use-kwin windows"
     );
 }
 

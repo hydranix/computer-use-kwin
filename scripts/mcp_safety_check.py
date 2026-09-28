@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract and safety smoke test for the computer-use-linux MCP surface."""
+"""Contract and safety smoke test for the computer-use-kwin MCP surface."""
 
 from __future__ import annotations
 
@@ -120,8 +120,8 @@ OPEN_WORLD_TOOLS = (EXPECTED_TOOLS | {SHELL_TOOL, COMPLETION_TOOL}) - {
 class McpClient:
     def __init__(self, binary: pathlib.Path, extra_env: dict[str, str] | None = None):
         child_env = os.environ.copy()
-        child_env["COMPUTER_USE_LINUX_ENABLE_SHELL"] = "0"
-        child_env["COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE"] = "0"
+        child_env["COMPUTER_USE_KWIN_ENABLE_SHELL"] = "0"
+        child_env["COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE"] = "0"
         if extra_env:
             child_env.update(extra_env)
         self.process = subprocess.Popen(
@@ -236,7 +236,7 @@ def assert_tool_annotations(tool: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--binary", default="target/debug/computer-use-linux")
+    parser.add_argument("--binary", default="target/debug/computer-use-kwin")
     parser.add_argument("--repo", default=".")
     args = parser.parse_args()
 
@@ -266,13 +266,13 @@ def main() -> int:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "computer-use-linux-ci", "version": "0"},
+                "clientInfo": {"name": "computer-use-kwin-ci", "version": "0"},
             },
         )["result"]
         client.notify("notifications/initialized", {})
 
         server_info = initialize.get("serverInfo") or {}
-        if server_info.get("name") != "computer-use-linux":
+        if server_info.get("name") != "computer-use-kwin":
             raise AssertionError(f"unexpected server name: {server_info!r}")
         if server_info.get("version") != version:
             raise AssertionError(f"MCP server version {server_info.get('version')!r} != Cargo version {version!r}")
@@ -367,7 +367,7 @@ def main() -> int:
     finally:
         client.close()
 
-    notification_client = McpClient(binary, {"COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE": "1"})
+    notification_client = McpClient(binary, {"COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE": "1"})
     try:
         notification_client.request("initialize", {
             "protocolVersion": "2024-11-05", "capabilities": {},
@@ -384,16 +384,16 @@ def main() -> int:
     finally:
         notification_client.close()
 
-    shell_home = tempfile.TemporaryDirectory(prefix="computer-use-linux-shell-home-")
+    shell_home = tempfile.TemporaryDirectory(prefix="computer-use-kwin-shell-home-")
     pathlib.Path(shell_home.name, ".profile").write_text(
-        "export COMPUTER_USE_LINUX_PROFILE_SECRET=must-not-be-loaded\n",
+        "export COMPUTER_USE_KWIN_PROFILE_SECRET=must-not-be-loaded\n",
         encoding="utf-8",
     )
     shell_client = McpClient(
         binary,
         {
-            "COMPUTER_USE_LINUX_ENABLE_SHELL": "1",
-            "COMPUTER_USE_LINUX_TEST_SECRET": "must-not-be-inherited",
+            "COMPUTER_USE_KWIN_ENABLE_SHELL": "1",
+            "COMPUTER_USE_KWIN_TEST_SECRET": "must-not-be-inherited",
             "HOME": shell_home.name,
         },
     )
@@ -403,7 +403,7 @@ def main() -> int:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "computer-use-linux-shell-ci", "version": "0"},
+                "clientInfo": {"name": "computer-use-kwin-shell-ci", "version": "0"},
             },
         )
         shell_client.notify("notifications/initialized", {})
@@ -427,7 +427,7 @@ def main() -> int:
             {
                 "name": SHELL_TOOL,
                 "arguments": {
-                    "command": 'test -z "${COMPUTER_USE_LINUX_TEST_SECRET-}" && test -z "${COMPUTER_USE_LINUX_PROFILE_SECRET-}" && printf %s "$EXPLICIT"',
+                    "command": 'test -z "${COMPUTER_USE_KWIN_TEST_SECRET-}" && test -z "${COMPUTER_USE_KWIN_PROFILE_SECRET-}" && printf %s "$EXPLICIT"',
                     "cwd": str(repo),
                     "env": {"EXPLICIT": "shell-ok"},
                     "timeout_seconds": 5,

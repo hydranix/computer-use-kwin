@@ -489,7 +489,7 @@ mod tests {
         use std::io::Write as _;
         use std::os::unix::fs::PermissionsExt as _;
         let path = std::env::temp_dir().join(format!(
-            "computer-use-linux-busy-{label}-{}-{}",
+            "computer-use-kwin-busy-{label}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -748,7 +748,7 @@ mod tests {
 
     fn temporary_pid_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "computer-use-linux-command-runner-{label}-{}-{}.pid",
+            "computer-use-kwin-command-runner-{label}-{}-{}.pid",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

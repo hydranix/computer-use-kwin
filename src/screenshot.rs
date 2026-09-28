@@ -470,7 +470,7 @@ fn percent_decode(value: &str) -> String {
 }
 
 fn request_token() -> String {
-    format!("computer_use_linux_{}", unique_suffix().replace('-', "_"))
+    format!("computer_use_kwin_{}", unique_suffix().replace('-', "_"))
 }
 
 fn unique_suffix() -> String {
@@ -487,7 +487,7 @@ mod tests {
 
     fn test_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "computer-use-linux-screenshot-test-{name}-{}",
+            "computer-use-kwin-screenshot-test-{name}-{}",
             unique_suffix()
         ))
     }
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn request_token_is_portal_safe() {
         let token = request_token();
-        assert!(token.starts_with("computer_use_linux_"));
+        assert!(token.starts_with("computer_use_kwin_"));
         assert!(token.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
     }
 

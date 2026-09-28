@@ -1,19 +1,19 @@
 [package]
-name = "computer-use-linux"
+name = "computer-use-kwin"
 version = "0.7.4"
 edition = "2021"
 authors = ["Avi Fenesh <avifenesh@users.noreply.github.com>"]
 license = "MIT"
 description = "KDE Plasma 6 Wayland desktop control over MCP with AT-SPI, XDG portals, KWin scripting, and ydotool."
-homepage = "https://github.com/agent-sh/computer-use-linux"
-repository = "https://github.com/agent-sh/computer-use-linux"
-documentation = "https://github.com/agent-sh/computer-use-linux#readme"
+homepage = "https://github.com/hydranix/computer-use-kwin"
+repository = "https://github.com/hydranix/computer-use-kwin"
+documentation = "https://github.com/hydranix/computer-use-kwin#readme"
 readme = "README.md"
 keywords = ["mcp", "computer-use", "accessibility", "kde", "wayland"]
 categories = ["accessibility", "command-line-utilities", "os::linux-apis"]
 
 [[bin]]
-name = "computer-use-linux"
+name = "computer-use-kwin"
 path = "src/main.rs"
 
 [dependencies]

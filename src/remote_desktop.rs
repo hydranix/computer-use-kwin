@@ -368,7 +368,7 @@ pub async fn scroll(
 /// steps to keep `direction: "up"|"down"` matching viewport motion.
 /// Horizontal is left unchanged (KDE only special-cases continuous vertical).
 ///
-/// Override with `COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT=1|0|true|false`.
+/// Override with `COMPUTER_USE_KWIN_PORTAL_SCROLL_INVERT=1|0|true|false`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PortalScrollPolarity {
     /// Other desktops: match ydotool / REL_WHEEL signs.
@@ -378,7 +378,7 @@ pub(crate) enum PortalScrollPolarity {
 }
 
 fn portal_scroll_polarity() -> PortalScrollPolarity {
-    if let Ok(value) = std::env::var("COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT") {
+    if let Ok(value) = std::env::var("COMPUTER_USE_KWIN_PORTAL_SCROLL_INVERT") {
         let value = value.trim();
         if value.eq_ignore_ascii_case("1")
             || value.eq_ignore_ascii_case("true")
@@ -939,7 +939,7 @@ impl PointerButton {
     }
 }
 
-const PERSIST_REMOTE_DESKTOP_ENV: &str = "COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP";
+const PERSIST_REMOTE_DESKTOP_ENV: &str = "COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP";
 /// `SelectDevices` persist_mode: keep the grant until the user revokes it.
 const PERSIST_MODE_UNTIL_REVOKED: u32 = 2;
 /// `persist_mode` and `restore_token` were added in version 2.
@@ -1168,7 +1168,7 @@ async fn commit_restore_permit(permit: Option<RestorePermit>, parsed: ParsedRest
 fn warn_persist_disabled_once(reason: &str) {
     static ONCE: OnceLock<()> = OnceLock::new();
     if ONCE.set(()).is_ok() {
-        eprintln!("[computer-use-linux] remote desktop persistence disabled: {reason}");
+        eprintln!("[computer-use-kwin] remote desktop persistence disabled: {reason}");
     }
 }
 
@@ -1176,7 +1176,7 @@ fn warn_persist_store_once(error: &io::Error) {
     static ONCE: OnceLock<()> = OnceLock::new();
     if ONCE.set(()).is_ok() {
         eprintln!(
-            "[computer-use-linux] remote desktop persistence disabled: could not open the restore-token store ({error})"
+            "[computer-use-kwin] remote desktop persistence disabled: could not open the restore-token store ({error})"
         );
     }
 }
@@ -1184,7 +1184,7 @@ fn warn_persist_store_once(error: &io::Error) {
 fn warn_persist_commit_once(error: &io::Error) {
     static ONCE: OnceLock<()> = OnceLock::new();
     if ONCE.set(()).is_ok() {
-        eprintln!("[computer-use-linux] could not store the remote desktop restore token: {error}");
+        eprintln!("[computer-use-kwin] could not store the remote desktop restore token: {error}");
     }
 }
 
@@ -1192,7 +1192,7 @@ fn warn_rejected_restore_token_once() {
     static ONCE: OnceLock<()> = OnceLock::new();
     if ONCE.set(()).is_ok() {
         eprintln!(
-            "[computer-use-linux] RemoteDesktop returned a restore token this process will not store (empty, too long, or it contains whitespace or control characters). The next portal session will prompt again."
+            "[computer-use-kwin] RemoteDesktop returned a restore token this process will not store (empty, too long, or it contains whitespace or control characters). The next portal session will prompt again."
         );
     }
 }
@@ -1211,6 +1211,7 @@ fn remote_desktop_state_dir_from_env() -> io::Result<PathBuf> {
 }
 
 fn remote_desktop_state_dir(xdg_state_home: Option<&str>, home: Option<&str>) -> Option<PathBuf> {
+    // Keep this namespace so existing portal restore tokens survive the rename.
     if let Some(path) = absolute_dir_component(xdg_state_home) {
         return Some(path.join("computer-use-linux"));
     }

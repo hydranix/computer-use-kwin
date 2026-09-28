@@ -56,8 +56,8 @@ const KDE_CLIPBOARD_DBUS_TIMEOUT: Duration = Duration::from_secs(3);
 const KDE_KLIPPER_SERVICE: &str = "org.kde.klipper";
 const KDE_KLIPPER_PATH: &str = "/klipper";
 const KDE_KLIPPER_INTERFACE: &str = "org.kde.klipper.klipper";
-const SHELL_ENABLE_ENV: &str = "COMPUTER_USE_LINUX_ENABLE_SHELL";
-const COMPLETION_ENABLE_ENV: &str = "COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE";
+const SHELL_ENABLE_ENV: &str = "COMPUTER_USE_KWIN_ENABLE_SHELL";
+const COMPLETION_ENABLE_ENV: &str = "COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE";
 const SHELL_DEFAULT_TIMEOUT_SECS: u64 = 30;
 const SHELL_MAX_TIMEOUT_SECS: u64 = 120;
 const SHELL_MAX_COMMAND_BYTES: usize = 64 * 1024;
@@ -67,7 +67,7 @@ const SHELL_MAX_ENV_BYTES: usize = 64 * 1024;
 const SHELL_RESPONSE_STREAM_BYTES: usize = 512 * 1024;
 
 #[derive(Clone, Default)]
-pub struct ComputerUseLinux {
+pub struct ComputerUseKwin {
     last_nodes: Arc<Mutex<Vec<AccessibilityNode>>>,
     /// Pid the cached snapshot was taken for, when get_app_state had a target.
     /// Element indices are only meaningful against that app (#167).
@@ -110,7 +110,7 @@ fn sanitize_unsigned_integer_formats(value: &mut serde_json::Value) {
     }
 }
 
-impl ComputerUseLinux {
+impl ComputerUseKwin {
     fn mcp_tool_router(&self) -> rmcp::handler::server::router::tool::ToolRouter<Self> {
         self.router_with_completion(env::var(COMPLETION_ENABLE_ENV).as_deref() == Ok("1"))
     }
@@ -142,10 +142,10 @@ impl ComputerUseLinux {
 }
 
 #[tool_router]
-impl ComputerUseLinux {
+impl ComputerUseKwin {
     #[tool(
         name = "complete_interaction",
-        description = "Send a desktop notification that this agent has finished its interaction. Available only with COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1. This cue does not acquire or release an exclusive desktop lock. Delivery is best effort and bounded; it may be suppressed by desktop notification settings.",
+        description = "Send a desktop notification that this agent has finished its interaction. Available only with COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE=1. This cue does not acquire or release an exclusive desktop lock. Delivery is best effort and bounded; it may be suppressed by desktop notification settings.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -1524,7 +1524,7 @@ impl ComputerUseLinux {
 
     #[tool(
         name = "run_shell",
-        description = "Execute one explicitly approved /bin/sh command with same-user host authority. This tool is absent unless the server operator starts computer-use-linux with COMPUTER_USE_LINUX_ENABLE_SHELL=1. It is not sandboxed: the command can read or modify files and use the network with the server user's permissions. The inherited environment is cleared to a small desktop/runtime allowlist; pass any additional variables explicitly. Execution time and output are bounded: returned streams are truncated to 512 KiB, while a stream exceeding the 8 MiB collection ceiling fails the call without returning partial output. An audit digest is written to server stderr.",
+        description = "Execute one explicitly approved /bin/sh command with same-user host authority. This tool is absent unless the server operator starts computer-use-kwin with COMPUTER_USE_KWIN_ENABLE_SHELL=1. It is not sandboxed: the command can read or modify files and use the network with the server user's permissions. The inherited environment is cleared to a small desktop/runtime allowlist; pass any additional variables explicitly. Execution time and output are bounded: returned streams are truncated to 512 KiB, while a stream exceeding the 8 MiB collection ceiling fails the call without returning partial output. An audit digest is written to server stderr.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -1717,7 +1717,7 @@ impl ComputerUseLinux {
 
 #[tool_handler(
     router = self.mcp_tool_router(),
-    name = "computer-use-linux",
+    name = "computer-use-kwin",
     // NOTE: keep in lockstep with Cargo.toml + package.json on every release.
     // The rmcp tool_handler macro only accepts a string literal here, so this
     // can't be env!("CARGO_PKG_VERSION"); the MCP safety check (CI) fails the
@@ -1725,7 +1725,7 @@ impl ComputerUseLinux {
     version = "0.7.4",
     instructions = "Begin every turn that uses Computer Use by calling get_app_state. If AT-SPI accessibility is unavailable, verify that the shared session accessibility service is enabled before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. This KDE Plasma 6 Wayland backend uses KWin for window listing, focus, and targeting; if KWin window introspection is unavailable, ensure org.kde.KWin scripting is exposed on the session bus. The backend can capture size-bounded screenshots through XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus KWin windows when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use KWin move_window/resize_window to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Scope get_app_state with app_name_or_bundle_identifier or a window target (window_id, pid, app_id, wm_class, title); without one it returns the whole desktop AT-SPI tree, reports tree_scoped=false, and warns in message, which can flood context. accessibility_tree_truncated=true means the node, depth, or read budget stopped traversal with unread elements left; recover by scoping to a narrower app or window target and raising max_nodes or max_depth (hard caps 2000 and 64), not by lowering max_nodes. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
 )]
-impl ServerHandler for ComputerUseLinux {}
+impl ServerHandler for ComputerUseKwin {}
 
 fn shell_execution_enabled() -> bool {
     shell_execution_enabled_value(env::var(SHELL_ENABLE_ENV).ok().as_deref())
@@ -1741,7 +1741,7 @@ struct CompletionOutput {
 async fn send_completion_notification(program: &Path, limit: Duration) -> CompletionOutput {
     let mut command = TokioCommand::new(program);
     command.args([
-        "--app-name=computer-use-linux",
+        "--app-name=computer-use-kwin",
         "--expire-time=3000",
         "Desktop interaction finished",
         "The agent has finished its desktop interaction.",
@@ -1960,7 +1960,7 @@ async fn execute_shell(params: RunShellParams) -> RunShellOutput {
     child.envs(&params.env);
 
     eprintln!(
-        "[computer-use-linux] run_shell start sha256={command_sha256} cwd={cwd_display:?} timeout_seconds={timeout_seconds}"
+        "[computer-use-kwin] run_shell start sha256={command_sha256} cwd={cwd_display:?} timeout_seconds={timeout_seconds}"
     );
     match crate::command_runner::output_with_timeout(
         child,
@@ -1974,7 +1974,7 @@ async fn execute_shell(params: RunShellParams) -> RunShellOutput {
             let (stdout, stdout_truncated) = bounded_shell_stream(&output.stdout);
             let (stderr, stderr_truncated) = bounded_shell_stream(&output.stderr);
             eprintln!(
-                "[computer-use-linux] run_shell finish sha256={command_sha256} exit_code={exit_code:?} stdout_bytes={} stderr_bytes={} stdout_truncated={stdout_truncated} stderr_truncated={stderr_truncated}",
+                "[computer-use-kwin] run_shell finish sha256={command_sha256} exit_code={exit_code:?} stdout_bytes={} stderr_bytes={} stdout_truncated={stdout_truncated} stderr_truncated={stderr_truncated}",
                 output.stdout.len(),
                 output.stderr.len()
             );
@@ -1994,7 +1994,7 @@ async fn execute_shell(params: RunShellParams) -> RunShellOutput {
         Err(error) => {
             let error = format!("{error:#}");
             eprintln!(
-                "[computer-use-linux] run_shell error sha256={command_sha256} error={error:?}"
+                "[computer-use-kwin] run_shell error sha256={command_sha256} error={error:?}"
             );
             shell_error_output(command_sha256, cwd_display, timeout_seconds, error)
         }
@@ -2002,7 +2002,7 @@ async fn execute_shell(params: RunShellParams) -> RunShellOutput {
 }
 
 pub async fn serve_mcp() -> Result<()> {
-    ComputerUseLinux::default()
+    ComputerUseKwin::default()
         .serve(rmcp::transport::stdio())
         .await?
         .waiting()
@@ -2722,7 +2722,7 @@ struct ActionOutput {
     received: Option<serde_json::Value>,
 }
 
-impl ComputerUseLinux {
+impl ComputerUseKwin {
     fn is_wayland_session(&self) -> bool {
         crate::diagnostics::hydrate_session_bus_env();
         let session_type = env::var("XDG_SESSION_TYPE").ok();
@@ -2733,7 +2733,7 @@ impl ComputerUseLinux {
     // The Wayland remote-desktop portal is a fallback for input: when a
     // compatible ydotool CLI and working `ydotoold` socket are present we
     // prefer ydotool, because it injects input without a permission prompt.
-    // Without `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` the portal asks
+    // Without `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP=1` the portal asks
     // again on every new process. That opt-in sends `persist_mode=2` on
     // RemoteDesktop SelectDevices and reuses the single-use restore token.
     async fn should_prefer_portal_pointer_backend(&self) -> bool {
@@ -5181,7 +5181,7 @@ mod tests {
 
     #[test]
     fn completion_tool_is_explicitly_opt_in_and_has_side_effect_annotations() {
-        let server = ComputerUseLinux::default();
+        let server = ComputerUseKwin::default();
         assert!(!server
             .router_with_completion(false)
             .list_all()
@@ -5201,7 +5201,7 @@ mod tests {
 
     #[test]
     fn gnome_setup_tools_are_not_exposed() {
-        let tools = ComputerUseLinux::default().mcp_tool_router().list_all();
+        let tools = ComputerUseKwin::default().mcp_tool_router().list_all();
 
         for removed_tool in ["setup_accessibility", "setup_window_targeting"] {
             assert!(
@@ -5244,7 +5244,7 @@ mod tests {
 
     #[test]
     fn exported_tool_schemas_omit_unsigned_integer_formats() {
-        let tools = ComputerUseLinux::default().mcp_tool_router().list_all();
+        let tools = ComputerUseKwin::default().mcp_tool_router().list_all();
         let value = serde_json::to_value(tools).unwrap();
         let mut unsupported = Vec::new();
         collect_unsigned_integer_formats(&value, "$", &mut unsupported);
@@ -6164,7 +6164,7 @@ mod tests {
 
     #[test]
     fn cached_element_index_resolves_to_bounds_center() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(
             7,
             Some(Bounds {
@@ -6185,7 +6185,7 @@ mod tests {
 
     #[test]
     fn coordinate_target_overrides_cached_element_index() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(
             7,
             Some(Bounds {
@@ -6206,7 +6206,7 @@ mod tests {
 
     #[test]
     fn cached_element_index_requires_positive_bounds() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(
             7,
             Some(Bounds {
@@ -6226,7 +6226,7 @@ mod tests {
 
     #[test]
     fn cached_element_index_ignores_sentinel_bounds() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(
             7,
             Some(Bounds {
@@ -6246,7 +6246,7 @@ mod tests {
 
     #[test]
     fn empty_node_cache_clears_stale_element_index() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(
             7,
             Some(Bounds {
@@ -6267,7 +6267,7 @@ mod tests {
 
     #[test]
     fn click_target_falls_back_to_primary_action_without_bounds() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node_with_actions(
             7,
             None,
@@ -6305,7 +6305,7 @@ mod tests {
     #[test]
     fn element_activation_ignores_hidpi_and_zero_origin_bounds() {
         for (x, y) in [(75, 144), (0, 0)] {
-            let backend = ComputerUseLinux::default();
+            let backend = ComputerUseKwin::default();
             backend.cache_nodes(&[node_with_actions(
                 7,
                 Some(Bounds {
@@ -6362,7 +6362,7 @@ mod tests {
 
     #[test]
     fn element_click_does_not_replace_pointer_with_non_activation_action() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node_with_actions(
             7,
             Some(Bounds {
@@ -6396,7 +6396,7 @@ mod tests {
             ("spin button", "activate"),
             ("slider", "jump"),
         ] {
-            let backend = ComputerUseLinux::default();
+            let backend = ComputerUseKwin::default();
             let mut target = node_with_actions(
                 7,
                 Some(Bounds {
@@ -6453,7 +6453,7 @@ mod tests {
 
     #[test]
     fn click_target_falls_back_to_primary_action_with_sentinel_bounds() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node_with_actions(
             7,
             Some(Bounds {
@@ -6495,7 +6495,7 @@ mod tests {
 
     #[test]
     fn click_target_requires_bounds_for_non_plain_clicks() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node_with_actions(
             7,
             None,
@@ -6696,7 +6696,7 @@ mod tests {
     #[test]
     fn ydotool_socket_selection_rejects_legacy_stream_socket() {
         let dir =
-            std::env::temp_dir().join(format!("computer-use-linux-server-{}", std::process::id()));
+            std::env::temp_dir().join(format!("computer-use-kwin-server-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp server dir");
         let stale_socket = dir.join("stale.sock");
@@ -6715,7 +6715,7 @@ mod tests {
     #[test]
     fn ydotool_socket_selection_accepts_datagram_socket() {
         let dir = std::env::temp_dir().join(format!(
-            "computer-use-linux-server-dgram-{}",
+            "computer-use-kwin-server-dgram-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
@@ -6762,7 +6762,7 @@ mod tests {
 
     #[test]
     fn element_identifier_overrides_cached_object_ref() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(7, None)]);
 
         let object_ref = backend
@@ -6779,7 +6779,7 @@ mod tests {
 
     #[test]
     fn element_index_resolves_to_cached_object_ref() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_nodes(&[node(7, None)]);
 
         let object_ref = backend
@@ -6796,7 +6796,7 @@ mod tests {
 
     #[test]
     fn semantic_selector_resolves_unique_cached_node_by_role_and_name() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let mut search_entry = node(7, None);
         search_entry.role = "entry".to_string();
         search_entry.name = Some("Search files".to_string());
@@ -6821,7 +6821,7 @@ mod tests {
 
     #[test]
     fn semantic_selector_prefers_actionable_match() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let mut label = node(4, None);
         label.role = "label".to_string();
         label.name = Some("Close".to_string());
@@ -6847,7 +6847,7 @@ mod tests {
 
     #[test]
     fn semantic_selector_prefers_editable_match() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let mut label = node(4, None);
         label.role = "label".to_string();
         label.name = Some("Search".to_string());
@@ -6874,7 +6874,7 @@ mod tests {
 
     #[test]
     fn semantic_selector_reports_ambiguous_matches() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let mut first = node_with_actions(7, None, vec![click_action()]);
         first.name = Some("Close".to_string());
         let mut second = node_with_actions(9, None, vec![click_action()]);
@@ -6900,7 +6900,7 @@ mod tests {
 
     #[test]
     fn semantic_click_selector_prefers_native_activation() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let mut button = node_with_actions(
             7,
             Some(Bounds {
@@ -7242,7 +7242,7 @@ mod node_target_scope_tests {
 
     #[tokio::test]
     async fn index_from_another_apps_snapshot_is_rejected() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let node = cached_node(2, ":1.9/org/a11y/atspi/accessible/42");
         backend.cache_snapshot(std::slice::from_ref(&node), Some(2_690_687));
 
@@ -7260,7 +7260,7 @@ mod node_target_scope_tests {
 
     #[tokio::test]
     async fn same_target_or_no_target_is_allowed() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let node = cached_node(2, ":1.9/org/a11y/atspi/accessible/42");
         backend.cache_snapshot(std::slice::from_ref(&node), Some(2_690_664));
 
@@ -7275,7 +7275,7 @@ mod node_target_scope_tests {
     async fn unscoped_snapshot_with_unknown_owner_is_allowed() {
         // No snapshot pid, and the owner lookup cannot resolve this ref here,
         // so a mismatch cannot be shown and the action proceeds.
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         let node = cached_node(2, ":1.9999/org/a11y/atspi/accessible/42");
         backend.cache_snapshot(std::slice::from_ref(&node), None);
 
@@ -7284,7 +7284,7 @@ mod node_target_scope_tests {
 
     #[test]
     fn a_new_snapshot_replaces_the_recorded_pid() {
-        let backend = ComputerUseLinux::default();
+        let backend = ComputerUseKwin::default();
         backend.cache_snapshot(&[], Some(10));
         backend.cache_snapshot(&[], None);
         assert_eq!(*backend.last_snapshot_pid.lock().unwrap(), None);

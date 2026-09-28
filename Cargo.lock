@@ -321,7 +321,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "computer-use-linux"
+name = "computer-use-kwin"
 version = "0.7.4"
 dependencies = [
  "anyhow",

@@ -9,14 +9,14 @@
 //
 // Usage: node check.mjs [--command <binary-or-wrapper>]
 //   --command  path to the server entrypoint; `mcp` is appended (default:
-//              target/debug/computer-use-linux)
+//              target/debug/computer-use-kwin)
 
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js';
 
 function parseArgs(argv) {
-  const args = { command: 'target/debug/computer-use-linux' };
+  const args = { command: 'target/debug/computer-use-kwin' };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--command' && argv[i + 1]) {
       args.command = argv[i + 1];
