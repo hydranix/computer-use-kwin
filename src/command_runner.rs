@@ -81,6 +81,7 @@ pub(crate) async fn output_with_stdin(
     output_with_input(command, action, timeout, Some(input)).await
 }
 
+#[cfg(test)]
 pub(crate) fn output_blocking(command: &mut StdCommand, action: &str) -> Result<Output> {
     output_blocking_with_timeout(command, action, COMMAND_TIMEOUT)
 }
@@ -183,10 +184,6 @@ async fn output_with_input(
         .await
         .with_context(|| format!("failed to {action}"))?;
     supervise_child(child, action, timeout, input).await
-}
-
-pub(crate) async fn output_child(child: Child, action: &str, timeout: Duration) -> Result<Output> {
-    supervise_child(child, action, timeout, None).await
 }
 
 async fn supervise_child(

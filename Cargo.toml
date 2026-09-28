@@ -16,10 +16,6 @@ categories = ["accessibility", "command-line-utilities", "os::linux-apis"]
 name = "computer-use-linux"
 path = "src/main.rs"
 
-[[bin]]
-name = "computer-use-linux-cosmic"
-path = "src/bin/computer-use-linux-cosmic.rs"
-
 [dependencies]
 mimalloc = { version = "0.1", default-features = false }
 anyhow = "1.0.102"
@@ -33,7 +29,6 @@ atspi = { version = "0.29.0", default-features = false, features = ["proxies", "
 atspi-connection = { version = "0.13.0", default-features = false, features = ["wrappers"] }
 base64 = "0.22.1"
 evdev = "0.13.2"
-cosmic-protocols = { version = "0.2.0", default-features = false, features = ["client"] }
 futures-util = "0.3.32"
 getrandom = "0.4.2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
@@ -47,9 +42,6 @@ tokio = { version = "1.51.1", features = ["io-util", "macros", "process", "rt", 
 wayland-client = "0.31.11"
 wayland-protocols = { version = "0.32.9", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
-# Pure-Rust X11 client (no libxcb). Native X11 sessions only: absolute window
-# origins for the EWMH backend (wmctrl -lG counts the frame offset twice, #157).
-x11rb = "0.14"
 xkeysym = "0.2.1"
 zbus = "5.14.0"
 

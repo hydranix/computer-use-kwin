@@ -31,6 +31,8 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(test)]
+use std::process::Stdio;
 use std::{
     collections::BTreeMap,
     env,
@@ -38,7 +40,7 @@ use std::{
     future::Future,
     os::unix::net::UnixDatagram,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    process::{Command, Output},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -954,41 +956,6 @@ impl ComputerUseLinux {
                 Err(_) => {}
             }
         }
-        if self.should_prefer_xdotool_pointer() {
-            if let Some(xdotool_args) = xdotool_pointer_click_args(
-                x,
-                y,
-                params.click_count.unwrap_or(1).clamp(1, 10),
-                params.button.as_deref(),
-            ) {
-                let ydotool_commands = vec![
-                    absolute_mousemove_args(x, y),
-                    vec![
-                        "click".to_string(),
-                        "--repeat".to_string(),
-                        click_count.clone(),
-                        button.clone(),
-                    ],
-                ];
-                let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
-                    run_xdotool_pointer_or_fallback(Path::new("xdotool"), &xdotool_args, || async {
-                        run_ydotool_sequence(&ydotool_commands).await
-                    })
-                    .await
-                })
-                .await;
-                let _input_guard = input_guard;
-                let used_xdotool = result
-                    .as_ref()
-                    .is_ok_and(|result| result.backend == KeyboardCommandBackend::Xdotool);
-                let mut output =
-                    action_result("click", result.map(|result| result.outputs), received);
-                if output.ok && used_xdotool {
-                    output.message = "Action sent through xdotool (X11 XTEST).".to_string();
-                }
-                return Json(with_notes(output, off_screen_note));
-            }
-        }
         let commands = vec![
             absolute_mousemove_args(x, y),
             vec![
@@ -1567,41 +1534,6 @@ impl ComputerUseLinux {
                 received,
             });
         };
-        // X11: prefer xdotool/XTEST. ydotool's raw evdev scancodes get
-        // re-mapped by the active XKB layout on X11, so named keys and chords
-        // arrive as stray glyphs instead of real key events (issue #58).
-        if self.should_prefer_xdotool_keyboard() {
-            if let Some(spec) = xdotool_key_spec(&params.key) {
-                let xdotool_args = vec!["key".to_string(), "--clearmodifiers".to_string(), spec];
-                let ydotool_args =
-                    ydotool_key_args(key_events.clone(), !chord_modifiers.is_empty());
-                let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
-                    run_xdotool_or_fallback(Path::new("xdotool"), &xdotool_args, || {
-                        run_ydotool(&ydotool_args)
-                    })
-                    .await
-                })
-                .await;
-                let _input_guard = input_guard;
-                let used_xdotool = result
-                    .as_ref()
-                    .is_ok_and(|result| result.backend == KeyboardCommandBackend::Xdotool);
-                let mut output = action_result_with_focus(
-                    "press_key",
-                    result.map(|result| vec![result.output]),
-                    received,
-                    focus.clone(),
-                );
-                if used_xdotool {
-                    output.message = "Action sent through xdotool (X11 XTEST).".to_string();
-                }
-                if output.ok && focus.is_some() {
-                    let notes = self.input_landing_notes(focus.as_ref(), false).await;
-                    output = with_notes(output, notes);
-                }
-                return Json(output);
-            }
-        }
         let args = ydotool_key_args(key_events, !chord_modifiers.is_empty());
         let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
             run_ydotool(&args).await.map(|output| vec![output])
@@ -1747,72 +1679,6 @@ impl ComputerUseLinux {
                     Err(_) => {}
                 }
             }
-        }
-        // X11: xdotool type resolves keysyms against the live XKB layout.
-        // ydotool's raw scancodes get re-mapped by X11 and mangle symbols and
-        // digits (`_` → `%`, `1` → `+`) even on a plain US layout (issue #58).
-        if self.should_prefer_xdotool_keyboard() {
-            let delay_ms = xdotool_type_delay_ms();
-            let args = xdotool_type_args_with_delay(&params.text, delay_ms);
-            let command_timeout = xdotool_type_timeout(&params.text, delay_ms);
-            let text = params.text.clone();
-            let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
-                run_xdotool_or_fallback_with_timeout(
-                    Path::new("xdotool"),
-                    &args,
-                    command_timeout,
-                    || run_ydotool_type_text(&text),
-                )
-                .await
-            })
-            .await;
-            let _input_guard = input_guard;
-            let used_xdotool = result
-                .as_ref()
-                .is_ok_and(|result| result.backend == KeyboardCommandBackend::Xdotool);
-            let mut output = action_result_with_focus(
-                "type_text",
-                result.map(|result| vec![result.output]),
-                received,
-                focus.clone(),
-            );
-            if used_xdotool {
-                output.message = "Action sent through xdotool (X11 XTEST).".to_string();
-            }
-            if output.ok && focus.is_some() {
-                let notes = self.input_landing_notes(focus.as_ref(), true).await;
-                output = with_notes(output, notes);
-            }
-            return Json(output);
-        }
-        if self.should_prefer_wtype_keyboard() {
-            let text = params.text.clone();
-            let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
-                run_wtype_type_text_or_fallback(Path::new("wtype"), &text, || {
-                    run_ydotool_type_text(&text)
-                })
-                .await
-            })
-            .await;
-            let _input_guard = input_guard;
-            let used_wtype = result
-                .as_ref()
-                .is_ok_and(|result| result.backend == KeyboardCommandBackend::Wtype);
-            let mut output = action_result_with_focus(
-                "type_text",
-                result.map(|result| vec![result.output]),
-                received,
-                focus.clone(),
-            );
-            if used_wtype {
-                output.message =
-                    "Action sent through wtype (Wayland virtual-keyboard protocol).".to_string();
-            }
-            if output.ok && focus.is_some() {
-                let notes = self.input_landing_notes(focus.as_ref(), true).await;
-                output = with_notes(output, notes);
-            }
-            return Json(output);
         }
         let text = params.text.clone();
         let (input_guard, result) = run_cancellation_safe_input(input_guard, async move {
@@ -2890,21 +2756,7 @@ impl ComputerUseLinux {
         session_is_wayland(session_type.as_deref(), wayland_display.as_deref())
     }
 
-    // The Wayland remote-desktop portal is now a *fallback* for input: when a
-    // compatible ydotool CLI and working `ydotoold` socket are present we prefer
-    // ydotool, because it injects input without a permission prompt. GNOME
-    // refuses to persist remote-desktop
-    // grants (`org.freedesktop.portal.Error: Remote desktop sessions cannot
-    // persist`), so the portal would otherwise re-prompt on every new session.
-    // `COMPUTER_USE_LINUX_FORCE_YDOTOOL_*=1` always uses ydotool;
-    // `COMPUTER_USE_LINUX_FORCE_PORTAL_*=1` always uses the portal.
     async fn should_prefer_portal_pointer_backend(&self) -> bool {
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER") {
-            return false;
-        }
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER") {
-            return self.is_wayland_session();
-        }
         should_prefer_portal_backend_by_default(
             self.is_wayland_session(),
             ydotool_backend_available().await,
@@ -2912,15 +2764,6 @@ impl ComputerUseLinux {
     }
 
     async fn should_prefer_portal_keyboard_backend(&self) -> bool {
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD") {
-            return false;
-        }
-        if self.should_prefer_xdotool_keyboard() {
-            return false;
-        }
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD") {
-            return self.is_wayland_session() && !self.is_kde_wayland_session();
-        }
         !self.is_kde_wayland_session()
             && should_prefer_portal_backend_by_default(
                 self.is_wayland_session(),
@@ -2935,71 +2778,19 @@ impl ComputerUseLinux {
     /// session (e.g. established by a KDE clipboard paste) is reused even
     /// when ydotool is available, so the consent the user already granted
     /// keeps covering key chords; otherwise the portal is preferred only
-    /// when ydotool is absent or the portal is forced.
+    /// when ydotool is absent.
     async fn should_prefer_portal_keyboard_for_chords(&self) -> bool {
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD") {
-            return false;
-        }
-        if self.should_prefer_xdotool_keyboard() {
-            return false;
-        }
         if !self.is_wayland_session() {
             return false;
         }
-        if self.cached_portal_keyboard_session().is_some()
-            || env_flag_enabled("COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD")
-        {
+        if self.cached_portal_keyboard_session().is_some() {
             return true;
         }
         !ydotool_backend_available().await
     }
 
     fn should_prefer_kde_clipboard_text_backend(&self) -> bool {
-        !env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD")
-            && !self.should_prefer_xdotool_keyboard()
-            && self.is_kde_wayland_session()
-    }
-
-    /// Keyboard policy for X11 sessions: prefer `xdotool` (XTEST).
-    ///
-    /// ydotool writes raw evdev scancodes to a virtual uinput device. On X11
-    /// the server then re-interprets them through the active XKB layout, so
-    /// `press_key "Return"` and chords like `ctrl+a` land as stray characters,
-    /// and literal text can mangle symbols/digits (issue #58). XTEST resolves
-    /// keysyms against the live layout instead.
-    ///
-    /// `COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD=1` opts out;
-    /// `COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD=1` forces it on.
-    fn should_prefer_xdotool_keyboard(&self) -> bool {
-        prefer_xdotool_keyboard(
-            env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD"),
-            env_flag_enabled("COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD"),
-            self.is_wayland_session(),
-            env_var_non_empty("DISPLAY"),
-            xdotool_available(),
-        )
-    }
-
-    fn should_prefer_wtype_keyboard(&self) -> bool {
-        prefer_wtype_keyboard(
-            env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD"),
-            self.is_wayland_session(),
-            crate::diagnostics::wtype_compatible_wayland_desktop(
-                env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
-            ),
-            wtype_available(),
-        )
-    }
-
-    fn should_prefer_xdotool_pointer(&self) -> bool {
-        crate::diagnostics::hydrate_session_bus_env();
-        prefer_xdotool_pointer(
-            env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER"),
-            env::var("XDG_SESSION_TYPE").ok().as_deref(),
-            env_var_non_empty("DISPLAY"),
-            env::var("WAYLAND_DISPLAY").ok().as_deref(),
-            xdotool_available(),
-        )
+        self.is_kde_wayland_session()
     }
 
     fn is_kde_wayland_session(&self) -> bool {
@@ -3069,9 +2860,7 @@ impl ComputerUseLinux {
     }
 
     async fn ensure_portal_keyboard_session(&self) -> Result<Option<PortalKeyboardSession>> {
-        if env_flag_enabled("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD")
-            || !self.is_wayland_session()
-        {
+        if !self.is_wayland_session() {
             return Ok(None);
         }
         if let Some(session) = self.cached_portal_keyboard_session() {
@@ -4246,12 +4035,6 @@ fn env_flag_enabled(key: &str) -> bool {
     env::var(key).ok().as_deref() == Some("1")
 }
 
-fn env_var_non_empty(key: &str) -> bool {
-    env::var(key)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-}
-
 /// Return the base64 payload of a `data:` URL (or the original string if bare).
 fn data_url_payload(data_url: &str) -> String {
     data_url
@@ -4269,37 +4052,6 @@ fn session_is_wayland(session_type: Option<&str>, wayland_display: Option<&str>)
         Some(value) => value.eq_ignore_ascii_case("wayland"),
         None => wayland_display.is_some_and(|value| !value.trim().is_empty()),
     }
-}
-
-fn native_x11_xdotool_pointer_session(
-    session_type: Option<&str>,
-    wayland_display: Option<&str>,
-) -> bool {
-    session_type.is_some_and(|value| value.trim().eq_ignore_ascii_case("x11"))
-        && wayland_display.is_none_or(|value| value.trim().is_empty())
-}
-
-fn prefer_xdotool_pointer(
-    force_ydotool: bool,
-    session_type: Option<&str>,
-    display_available: bool,
-    wayland_display: Option<&str>,
-    xdotool_available: bool,
-) -> bool {
-    !force_ydotool
-        && native_x11_xdotool_pointer_session(session_type, wayland_display)
-        && display_available
-        && xdotool_available
-}
-
-fn prefer_xdotool_keyboard(
-    force_ydotool: bool,
-    force_xdotool: bool,
-    is_wayland: bool,
-    display_available: bool,
-    xdotool_available: bool,
-) -> bool {
-    !force_ydotool && display_available && xdotool_available && (force_xdotool || !is_wayland)
 }
 
 fn prepare_app_state_screenshot(
@@ -4786,61 +4538,6 @@ fn absolute_mousemove_args(x: i32, y: i32) -> Vec<String> {
     ]
 }
 
-fn xdotool_pointer_click_args(
-    x: i32,
-    y: i32,
-    count: u32,
-    button: Option<&str>,
-) -> Option<Vec<String>> {
-    let button = xdotool_pointer_button_code(button)?;
-    Some(vec![
-        "mousemove".to_string(),
-        "--".to_string(),
-        x.to_string(),
-        y.to_string(),
-        "click".to_string(),
-        "--repeat".to_string(),
-        count.to_string(),
-        button.to_string(),
-    ])
-}
-
-fn xdotool_pointer_button_code(button: Option<&str>) -> Option<&'static str> {
-    match button.unwrap_or("left").to_ascii_lowercase().as_str() {
-        "left" => Some("1"),
-        "middle" => Some("2"),
-        "right" => Some("3"),
-        _ => None,
-    }
-}
-
-#[derive(Debug)]
-struct PointerCommandResult {
-    outputs: Vec<Output>,
-    backend: KeyboardCommandBackend,
-}
-
-async fn run_xdotool_pointer_or_fallback<F, Fut>(
-    program: &Path,
-    args: &[String],
-    fallback: F,
-) -> std::result::Result<PointerCommandResult, String>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<Vec<Output>, String>>,
-{
-    match run_xdotool(program, args).await {
-        XdotoolAttempt::Unavailable => fallback().await.map(|outputs| PointerCommandResult {
-            outputs,
-            backend: KeyboardCommandBackend::Ydotool,
-        }),
-        XdotoolAttempt::Finished(result) => result.map(|output| PointerCommandResult {
-            outputs: vec![output],
-            backend: KeyboardCommandBackend::Xdotool,
-        }),
-    }
-}
-
 fn wheel_mousemove_args(dx: i32, dy: i32) -> Vec<String> {
     vec![
         "mousemove".to_string(),
@@ -5210,291 +4907,6 @@ where
 
 fn ydotool_output_error(output: Output) -> String {
     command_output_error("ydotool", output)
-}
-
-/// X11 keyboard input runs through `xdotool` (XTEST) instead of ydotool.
-///
-/// ydotool injects raw evdev keycodes into a virtual uinput device. Under X11
-/// the server re-interprets those scancodes through the active XKB layout, so
-/// named keys and chords land as unrelated glyphs and literal text can mangle
-/// symbols/digits (`_` → `%`, `1` → `+`). XTEST resolves keysyms against the
-/// live layout, which is what X11 clients actually expect. See issue #58.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum KeyboardCommandBackend {
-    Wtype,
-    Xdotool,
-    Ydotool,
-}
-
-struct KeyboardCommandResult {
-    output: Output,
-    backend: KeyboardCommandBackend,
-}
-
-enum XdotoolAttempt {
-    Unavailable,
-    Finished(std::result::Result<Output, String>),
-}
-
-async fn run_xdotool(program: &Path, args: &[String]) -> XdotoolAttempt {
-    run_xdotool_with_timeout(program, args, INPUT_COMMAND_TIMEOUT).await
-}
-
-async fn run_xdotool_with_timeout(
-    program: &Path,
-    args: &[String],
-    command_timeout: Duration,
-) -> XdotoolAttempt {
-    let mut command = TokioCommand::new(program);
-    command.args(args);
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-    command.kill_on_drop(true);
-    command.process_group(0);
-
-    // A busy-file spawn error is transient, not "xdotool is unavailable"; do
-    // not let it route input to the ydotool fallback.
-    match crate::command_runner::spawn_retrying_busy(&mut command).await {
-        Ok(child) => XdotoolAttempt::Finished(
-            match crate::command_runner::output_child(child, "run xdotool", command_timeout)
-                .await
-                .map_err(|error| format!("{error:#}"))
-            {
-                Ok(output) if output.status.success() => Ok(output),
-                Ok(output) => Err(command_output_error("xdotool", output)),
-                Err(error) => Err(error),
-            },
-        ),
-        Err(_) => XdotoolAttempt::Unavailable,
-    }
-}
-
-async fn run_xdotool_or_fallback<F, Fut>(
-    program: &Path,
-    args: &[String],
-    fallback: F,
-) -> std::result::Result<KeyboardCommandResult, String>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<Output, String>>,
-{
-    run_xdotool_or_fallback_with_timeout(program, args, INPUT_COMMAND_TIMEOUT, fallback).await
-}
-
-async fn run_xdotool_or_fallback_with_timeout<F, Fut>(
-    program: &Path,
-    args: &[String],
-    command_timeout: Duration,
-    fallback: F,
-) -> std::result::Result<KeyboardCommandResult, String>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<Output, String>>,
-{
-    match run_xdotool_with_timeout(program, args, command_timeout).await {
-        XdotoolAttempt::Unavailable => fallback().await.map(|output| KeyboardCommandResult {
-            output,
-            backend: KeyboardCommandBackend::Ydotool,
-        }),
-        XdotoolAttempt::Finished(result) => result.map(|output| KeyboardCommandResult {
-            output,
-            backend: KeyboardCommandBackend::Xdotool,
-        }),
-    }
-}
-
-async fn run_wtype_type_text_or_fallback<F, Fut>(
-    program: &Path,
-    text: &str,
-    fallback: F,
-) -> std::result::Result<KeyboardCommandResult, String>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<Output, String>>,
-{
-    let available = if program.components().count() > 1 {
-        std::fs::metadata(program)
-            .map(|meta| meta.is_file())
-            .unwrap_or(false)
-    } else {
-        program.to_str().is_some_and(which_in_path)
-    };
-    if !available {
-        return fallback().await.map(|output| KeyboardCommandResult {
-            output,
-            backend: KeyboardCommandBackend::Ydotool,
-        });
-    }
-
-    let mut command = TokioCommand::new(program);
-    command.arg("-");
-    let output = crate::command_runner::output_with_stdin(
-        command,
-        "run wtype",
-        ydotool_type_timeout(text),
-        text.as_bytes().to_vec(),
-    )
-    .await
-    .map_err(|error| format!("{error:#}"))?;
-    if !output.status.success() {
-        return Err(command_output_error("wtype", output));
-    }
-    Ok(KeyboardCommandResult {
-        output,
-        backend: KeyboardCommandBackend::Wtype,
-    })
-}
-
-/// True when `xdotool` can drive this session: an X11 session with `DISPLAY`
-/// set and the binary present. `COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD=1`
-/// opts out; `COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD=1` forces it on.
-fn xdotool_available() -> bool {
-    which_in_path("xdotool")
-}
-
-fn wtype_available() -> bool {
-    which_in_path("wtype")
-}
-
-fn prefer_wtype_keyboard(
-    force_ydotool: bool,
-    is_wayland: bool,
-    compatible_desktop: bool,
-    available: bool,
-) -> bool {
-    !force_ydotool && is_wayland && compatible_desktop && available
-}
-
-/// Default per-character delay for `xdotool type`, in milliseconds (xdotool's
-/// own default). `--delay 0` lets XTEST key events race each other on some X
-/// servers (Cinnamon on Mint 22, issue #147): every character arrives, but in
-/// a random order. A small delay keeps them ordered.
-/// `COMPUTER_USE_LINUX_XDOTOOL_TYPE_DELAY_MS` overrides it.
-const XDOTOOL_TYPE_DELAY_MS: u64 = 12;
-const XDOTOOL_TYPE_DELAY_ENV: &str = "COMPUTER_USE_LINUX_XDOTOOL_TYPE_DELAY_MS";
-
-fn xdotool_type_delay_ms() -> u64 {
-    env::var(XDOTOOL_TYPE_DELAY_ENV)
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(XDOTOOL_TYPE_DELAY_MS)
-}
-
-fn xdotool_type_args_with_delay(text: &str, delay_ms: u64) -> Vec<String> {
-    vec![
-        "type".to_string(),
-        "--clearmodifiers".to_string(),
-        "--delay".to_string(),
-        delay_ms.to_string(),
-        "--".to_string(),
-        text.to_string(),
-    ]
-}
-
-/// `xdotool type` spends about `delay_ms` per character, so long inputs need
-/// more than the flat input timeout.
-fn xdotool_type_timeout(text: &str, delay_ms: u64) -> Duration {
-    let chars = text.chars().count() as u64;
-    INPUT_COMMAND_TIMEOUT.saturating_add(Duration::from_millis(chars.saturating_mul(delay_ms)))
-}
-
-fn which_in_path(binary: &str) -> bool {
-    let Ok(path) = env::var("PATH") else {
-        return false;
-    };
-    env::split_paths(&path).any(|dir| {
-        let candidate = dir.join(binary);
-        std::fs::metadata(&candidate)
-            .map(|meta| meta.is_file())
-            .unwrap_or(false)
-    })
-}
-
-/// Map our key grammar onto an `xdotool key` spec such as `ctrl+a`, `Return`,
-/// or `shift+F5`. Returns `None` for keys the grammar does not accept, so the
-/// caller keeps its existing "never silently dropped" error.
-fn xdotool_key_spec(key: &str) -> Option<String> {
-    let parts = key
-        .split('+')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
-    let (key_part, modifier_parts) = parts.split_last()?;
-
-    // Validate through the same evdev grammar so both backends accept exactly
-    // the same input set.
-    key_chord(key)?;
-
-    let mut spec = Vec::new();
-    for part in modifier_parts {
-        spec.push(xdotool_modifier_name(part)?.to_string());
-    }
-
-    if modifier_parts.is_empty() {
-        if let Some(bare) = xdotool_modifier_keysym(key_part) {
-            return Some(bare.to_string());
-        }
-    }
-    spec.push(xdotool_keysym_name(key_part)?);
-    Some(spec.join("+"))
-}
-
-fn xdotool_modifier_name(key: &str) -> Option<&'static str> {
-    match normalize_key(key).as_str() {
-        "ctrl" | "control" => Some("ctrl"),
-        "alt" | "option" => Some("alt"),
-        "shift" => Some("shift"),
-        "meta" | "super" | "cmd" | "command" => Some("super"),
-        _ => None,
-    }
-}
-
-/// Standalone keysym for a bare modifier press (`press_key "Super"`).
-fn xdotool_modifier_keysym(key: &str) -> Option<&'static str> {
-    match normalize_key(key).as_str() {
-        "ctrl" | "control" => Some("ctrl"),
-        "alt" | "option" => Some("alt"),
-        "shift" => Some("shift"),
-        "meta" | "super" | "cmd" | "command" => Some("super"),
-        _ => None,
-    }
-}
-
-fn xdotool_keysym_name(key: &str) -> Option<String> {
-    let normalized = normalize_key(key);
-    let named = match normalized.as_str() {
-        "enter" | "return" => "Return",
-        "escape" | "esc" => "Escape",
-        "tab" => "Tab",
-        "backspace" => "BackSpace",
-        "delete" | "del" => "Delete",
-        "space" => "space",
-        "home" => "Home",
-        "end" => "End",
-        "pageup" | "page_up" => "Page_Up",
-        "pagedown" | "page_down" => "Page_Down",
-        "arrowleft" | "left" => "Left",
-        "arrowright" | "right" => "Right",
-        "arrowup" | "up" => "Up",
-        "arrowdown" | "down" => "Down",
-        "f1" => "F1",
-        "f2" => "F2",
-        "f3" => "F3",
-        "f4" => "F4",
-        "f5" => "F5",
-        "f6" => "F6",
-        "f7" => "F7",
-        "f8" => "F8",
-        "f9" => "F9",
-        "f10" => "F10",
-        "f11" => "F11",
-        "f12" => "F12",
-        value if value.len() == 1 && value.as_bytes()[0].is_ascii_alphanumeric() => {
-            return Some(value.to_string());
-        }
-        _ => return None,
-    };
-    Some(named.to_string())
 }
 
 fn command_output_error(command: &str, output: Output) -> String {
@@ -6213,24 +5625,6 @@ mod tests {
             false,
             incompatible_ydotool
         ));
-    }
-
-    #[test]
-    fn xdotool_keyboard_override_policy_matches_documented_precedence() {
-        assert!(prefer_xdotool_keyboard(false, true, true, true, true));
-        assert!(!prefer_xdotool_keyboard(true, true, true, true, true));
-        assert!(!prefer_xdotool_keyboard(false, true, true, false, true));
-        assert!(!prefer_xdotool_keyboard(false, false, true, true, true));
-        assert!(prefer_xdotool_keyboard(false, false, false, true, true));
-    }
-
-    #[test]
-    fn wayland_prefers_wtype_unless_ydotool_is_forced() {
-        assert!(prefer_wtype_keyboard(false, true, true, true));
-        assert!(!prefer_wtype_keyboard(true, true, true, true));
-        assert!(!prefer_wtype_keyboard(false, false, true, true));
-        assert!(!prefer_wtype_keyboard(false, true, false, true));
-        assert!(!prefer_wtype_keyboard(false, true, true, false));
     }
 
     #[test]
@@ -7157,113 +6551,6 @@ mod tests {
     }
 
     #[test]
-    fn native_x11_pointer_policy_requires_explicit_x11_without_wayland_display() {
-        assert!(native_x11_xdotool_pointer_session(Some("x11"), None));
-        assert!(!native_x11_xdotool_pointer_session(
-            Some("wayland"),
-            Some("wayland-0")
-        ));
-        assert!(!native_x11_xdotool_pointer_session(
-            Some("x11"),
-            Some("wayland-0")
-        ));
-    }
-
-    #[test]
-    fn xdotool_pointer_command_is_single_no_sync_move_and_click() {
-        assert_eq!(
-            xdotool_pointer_click_args(1550, 930, 3, Some("right")),
-            Some(vec![
-                "mousemove".to_string(),
-                "--".to_string(),
-                "1550".to_string(),
-                "930".to_string(),
-                "click".to_string(),
-                "--repeat".to_string(),
-                "3".to_string(),
-                "3".to_string(),
-            ])
-        );
-    }
-
-    #[test]
-    fn xdotool_pointer_policy_requires_all_pure_gating_conditions() {
-        let eligible = (false, Some("x11"), true, None, true);
-        assert!(prefer_xdotool_pointer(
-            eligible.0, eligible.1, eligible.2, eligible.3, eligible.4
-        ));
-        assert!(!prefer_xdotool_pointer(true, Some("x11"), true, None, true));
-        assert!(!prefer_xdotool_pointer(
-            false,
-            Some("wayland"),
-            true,
-            None,
-            true
-        ));
-        assert!(!prefer_xdotool_pointer(
-            false,
-            None,
-            true,
-            Some("wayland-0"),
-            true
-        ));
-        assert!(!prefer_xdotool_pointer(
-            false,
-            Some("x11"),
-            false,
-            None,
-            true
-        ));
-        assert!(!prefer_xdotool_pointer(
-            false,
-            Some("x11"),
-            true,
-            None,
-            false
-        ));
-    }
-
-    #[test]
-    fn xdotool_pointer_supports_only_standard_buttons() {
-        assert!(xdotool_pointer_click_args(10, 20, 1, None).is_some());
-        assert!(xdotool_pointer_click_args(10, 20, 1, Some("middle")).is_some());
-        assert!(xdotool_pointer_click_args(10, 20, 1, Some("right")).is_some());
-    }
-
-    #[test]
-    fn extended_pointer_buttons_do_not_construct_xdotool_commands() {
-        for button in ["side", "extra", "forward", "back"] {
-            assert_eq!(xdotool_pointer_click_args(10, 20, 1, Some(button)), None);
-        }
-    }
-
-    #[tokio::test]
-    async fn pointer_xdotool_spawn_failure_uses_ydotool_fallback() {
-        let result = run_xdotool_pointer_or_fallback(
-            Path::new("/definitely/missing/xdotool"),
-            &[],
-            || async { Ok::<_, String>(Vec::new()) },
-        )
-        .await
-        .expect("spawn failure should use fallback");
-
-        assert_eq!(result.backend, KeyboardCommandBackend::Ydotool);
-    }
-
-    #[tokio::test]
-    async fn pointer_xdotool_nonzero_exit_does_not_use_ydotool_fallback() {
-        let result = run_xdotool_pointer_or_fallback(
-            Path::new("/bin/sh"),
-            &["-c".to_string(), "exit 9".to_string()],
-            || async { Err::<Vec<Output>, _>("fallback called".to_string()) },
-        )
-        .await;
-
-        let error = result.expect_err("launched nonzero xdotool must be terminal");
-        assert!(!error.contains("fallback called"));
-    }
-
-    #[test]
     fn wheel_mousemove_uses_coordinate_separator_for_negative_values() {
         assert_eq!(
             wheel_mousemove_args(0, -3),
@@ -7331,258 +6618,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn xdotool_key_spec_maps_named_keys_to_x11_keysyms() {
-        assert_eq!(xdotool_key_spec("Return"), Some("Return".to_string()));
-        assert_eq!(xdotool_key_spec("enter"), Some("Return".to_string()));
-        assert_eq!(xdotool_key_spec("Escape"), Some("Escape".to_string()));
-        assert_eq!(xdotool_key_spec("backspace"), Some("BackSpace".to_string()));
-        assert_eq!(xdotool_key_spec("PageUp"), Some("Page_Up".to_string()));
-        assert_eq!(xdotool_key_spec("ArrowLeft"), Some("Left".to_string()));
-        assert_eq!(xdotool_key_spec("f5"), Some("F5".to_string()));
-        assert_eq!(xdotool_key_spec("space"), Some("space".to_string()));
-    }
-
-    #[test]
-    fn xdotool_key_spec_maps_chords_with_modifier_prefixes() {
-        assert_eq!(xdotool_key_spec("ctrl+a"), Some("ctrl+a".to_string()));
-        assert_eq!(xdotool_key_spec("Ctrl+S"), Some("ctrl+s".to_string()));
-        assert_eq!(
-            xdotool_key_spec("Ctrl+Shift+P"),
-            Some("ctrl+shift+p".to_string())
-        );
-        assert_eq!(
-            xdotool_key_spec("Meta+Return"),
-            Some("super+Return".to_string())
-        );
-        assert_eq!(xdotool_key_spec("Alt+F4"), Some("alt+F4".to_string()));
-    }
-
-    #[test]
-    fn xdotool_key_spec_maps_bare_modifier_to_single_keysym() {
-        assert_eq!(xdotool_key_spec("Super"), Some("super".to_string()));
-        assert_eq!(xdotool_key_spec("ctrl"), Some("ctrl".to_string()));
-    }
-
-    #[test]
-    fn xdotool_type_keeps_a_per_character_delay_so_xtest_events_stay_ordered() {
-        // Issue #147: `--delay 0` delivers characters out of order on some X
-        // servers. The default must stay non-zero.
-        const { assert!(XDOTOOL_TYPE_DELAY_MS > 0) };
-        let text = "x".repeat(10_000);
-        let args = xdotool_type_args_with_delay(&text, XDOTOOL_TYPE_DELAY_MS);
-
-        assert_eq!(
-            &args[..5],
-            ["type", "--clearmodifiers", "--delay", "12", "--"]
-        );
-        assert_eq!(args[3], XDOTOOL_TYPE_DELAY_MS.to_string());
-        assert_eq!(args[5], text);
-    }
-
-    #[test]
-    fn xdotool_type_timeout_grows_with_text_length() {
-        assert_eq!(xdotool_type_timeout("", 12), INPUT_COMMAND_TIMEOUT);
-        assert_eq!(
-            xdotool_type_timeout(&"x".repeat(1_000), 12),
-            INPUT_COMMAND_TIMEOUT + Duration::from_secs(12)
-        );
-        assert_eq!(
-            xdotool_type_timeout(&"x".repeat(1_000), 0),
-            INPUT_COMMAND_TIMEOUT
-        );
-    }
-
-    #[tokio::test]
-    async fn launched_xdotool_failure_does_not_replay_through_ydotool() {
-        let dir = std::env::temp_dir().join(format!(
-            "computer-use-linux-xdotool-fallback-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ));
-        std::fs::create_dir_all(&dir).expect("create command test directory");
-        let ydotool = dir.join("ydotool");
-        let xdotool_marker = dir.join("xdotool-ran");
-        let ydotool_marker = dir.join("ydotool-ran");
-        std::fs::write(
-            &ydotool,
-            format!("#!/bin/sh\ntouch '{}'\n", ydotool_marker.display()),
-        )
-        .expect("write fake ydotool");
-        std::fs::set_permissions(&ydotool, std::fs::Permissions::from_mode(0o700))
-            .expect("make fake ydotool executable");
-        let xdotool_args = vec![
-            "-c".to_string(),
-            format!("touch '{}'; exit 9", xdotool_marker.display()),
-        ];
-
-        let result = run_xdotool_or_fallback(Path::new("/bin/sh"), &xdotool_args, || async {
-            TokioCommand::new(&ydotool)
-                .output()
-                .await
-                .map_err(|error| error.to_string())
-        })
-        .await;
-
-        assert!(result.is_err());
-        assert!(xdotool_marker.exists(), "fake xdotool did not execute");
-        assert!(
-            !ydotool_marker.exists(),
-            "ydotool replayed input after xdotool started"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[tokio::test]
-    async fn unavailable_xdotool_uses_ydotool_fallback() {
-        let result = run_xdotool_or_fallback(
-            Path::new("/definitely/missing/xdotool"),
-            &xdotool_type_args_with_delay("text", XDOTOOL_TYPE_DELAY_MS),
-            || async {
-                TokioCommand::new("sh")
-                    .args(["-c", "exit 0"])
-                    .output()
-                    .await
-                    .map_err(|error| error.to_string())
-            },
-        )
-        .await
-        .expect("spawn failure should use fallback");
-
-        assert_eq!(result.backend, KeyboardCommandBackend::Ydotool);
-        assert!(result.output.status.success());
-    }
-
-    #[tokio::test]
-    async fn wtype_receives_unicode_text_through_stdin() {
-        let dir = std::env::temp_dir().join(format!(
-            "computer-use-linux-wtype-unicode-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ));
-        std::fs::create_dir_all(&dir).expect("create command test directory");
-        let wtype = dir.join("wtype");
-        let captured = dir.join("captured");
-        std::fs::write(
-            &wtype,
-            format!("#!/bin/sh\ncat > '{}'\n", captured.display()),
-        )
-        .expect("write fake wtype");
-        std::fs::set_permissions(&wtype, std::fs::Permissions::from_mode(0o700))
-            .expect("make fake wtype executable");
-        let text = "Zwölf Yaks aßen Öl über München";
-
-        let result = run_wtype_type_text_or_fallback(&wtype, text, || async {
-            panic!("available wtype must not fall back")
-        })
-        .await
-        .expect("wtype should succeed");
-
-        assert_eq!(result.backend, KeyboardCommandBackend::Wtype);
-        assert_eq!(std::fs::read_to_string(&captured).unwrap(), text);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[tokio::test]
-    async fn unavailable_wtype_uses_ydotool_fallback() {
-        let result = run_wtype_type_text_or_fallback(
-            Path::new("/definitely/missing/wtype"),
-            "text",
-            || async {
-                TokioCommand::new("sh")
-                    .args(["-c", "exit 0"])
-                    .output()
-                    .await
-                    .map_err(|error| error.to_string())
-            },
-        )
-        .await
-        .expect("missing wtype should use fallback");
-
-        assert_eq!(result.backend, KeyboardCommandBackend::Ydotool);
-    }
-
-    #[tokio::test]
-    async fn launched_wtype_failure_does_not_replay_through_ydotool() {
-        let dir = std::env::temp_dir().join(format!(
-            "computer-use-linux-wtype-fallback-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ));
-        std::fs::create_dir_all(&dir).expect("create command test directory");
-        let wtype = dir.join("wtype");
-        let fallback_marker = dir.join("ydotool-ran");
-        std::fs::write(&wtype, "#!/bin/sh\nexit 9\n").expect("write fake wtype");
-        std::fs::set_permissions(&wtype, std::fs::Permissions::from_mode(0o700))
-            .expect("make fake wtype executable");
-
-        let result = run_wtype_type_text_or_fallback(&wtype, "text", || async {
-            std::fs::write(&fallback_marker, "ran").unwrap();
-            TokioCommand::new("true")
-                .output()
-                .await
-                .map_err(|error| error.to_string())
-        })
-        .await;
-
-        assert!(result.is_err());
-        assert!(
-            !fallback_marker.exists(),
-            "ydotool replayed input after wtype started"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[tokio::test]
-    async fn cancelling_xdotool_wait_kills_the_child() {
-        let dir = std::env::temp_dir().join(format!(
-            "computer-use-linux-xdotool-cancel-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ));
-        std::fs::create_dir_all(&dir).expect("create command test directory");
-        let xdotool = dir.join("xdotool");
-        let pid_path = dir.join("pid");
-        std::fs::write(
-            &xdotool,
-            format!(
-                "#!/bin/sh\nprintf '%s' $$ > '{}'\nexec sleep 60\n",
-                pid_path.display()
-            ),
-        )
-        .expect("write fake xdotool");
-        std::fs::set_permissions(&xdotool, std::fs::Permissions::from_mode(0o700))
-            .expect("make fake xdotool executable");
-
-        let task = tokio::spawn(async move { run_xdotool(&xdotool, &[]).await });
-        let mut pid = None;
-        for _ in 0..200 {
-            if let Ok(value) = std::fs::read_to_string(&pid_path) {
-                pid = value.parse::<u32>().ok();
-                if pid.is_some() {
-                    break;
-                }
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        let pid = pid.expect("fake xdotool did not record its pid");
-        task.abort();
-        let _ = task.await;
-
-        for _ in 0..50 {
-            if !Path::new(&format!("/proc/{pid}")).exists() {
-                let _ = std::fs::remove_dir_all(dir);
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        unsafe {
-            libc::kill(pid as i32, libc::SIGKILL);
-        }
-        let _ = std::fs::remove_dir_all(dir);
-        panic!("cancelled xdotool child {pid} was not killed");
-    }
-
     #[tokio::test]
     async fn cancelling_between_press_and_release_keeps_input_locked() {
         let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
@@ -7622,19 +6657,6 @@ mod tests {
         )
         .await
         .expect("input lock remained held after the operation finished");
-    }
-
-    /// The xdotool path must accept exactly the keys the evdev grammar accepts,
-    /// so switching backends can never silently widen or narrow the surface.
-    #[test]
-    fn xdotool_key_spec_rejects_everything_key_chord_rejects() {
-        for key in ["NotAKey", "", "ctrl+", "ctrl+NotAKey", "f13", "hyper+a"] {
-            assert_eq!(
-                xdotool_key_spec(key).is_some(),
-                key_chord(key).is_some(),
-                "backend grammars diverged for {key:?}"
-            );
-        }
     }
 
     #[test]

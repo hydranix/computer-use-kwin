@@ -243,31 +243,6 @@ async fn logical_desktop_layout() -> Option<Vec<LogicalMonitor>> {
         }
     }
 
-    if env_token_contains("XDG_CURRENT_DESKTOP", "cosmic") {
-        if let Ok(monitors) = crate::cosmic_helper::monitor_layout().await {
-            let layout = monitors
-                .into_iter()
-                .map(|monitor| LogicalMonitor {
-                    x: monitor.x,
-                    y: monitor.y,
-                    width: monitor.width,
-                    height: monitor.height,
-                    scale: monitor.scale,
-                })
-                .collect::<Vec<_>>();
-            if !layout.is_empty()
-                && layout.iter().all(|monitor| {
-                    monitor.width > 0
-                        && monitor.height > 0
-                        && monitor.scale.is_finite()
-                        && monitor.scale > 0.0
-                })
-            {
-                return Some(layout);
-            }
-        }
-    }
-
     let mut command = Command::new("xrandr");
     command.arg("--listactivemonitors");
     let output = command_runner::output(command, "query XRandR monitor layout")
