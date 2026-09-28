@@ -174,7 +174,7 @@ jobs:
       - run: npm ci --prefix pi --ignore-scripts --no-audit --no-fund
       - run: npm run build:check --prefix pi
       - run: npm run typecheck --prefix pi
-      - run: COMPUTER_USE_LINUX_TEST_BINARY="$PWD/target/debug/computer-use-kwin" npm test --prefix pi
+      - run: COMPUTER_USE_KWIN_TEST_BINARY="$PWD/target/debug/computer-use-kwin" npm test --prefix pi
       - run: python3 scripts/generate_pi_tool_catalog.py --binary target/debug/computer-use-kwin --check
       - name: Smoke the installed Pi package
         run: |
@@ -183,8 +183,8 @@ jobs:
           COMPUTER_USE_KWIN_LOCAL_BINARY="$PWD/target/debug/computer-use-kwin" \
             npm install --prefix "$prefix" "$RUNNER_TEMP/$package" --no-audit --no-fund
           test -x "$prefix/node_modules/@hydranix/computer-use-kwin/npm/bin/computer-use-kwin-linux-x64"
-          COMPUTER_USE_LINUX_EXTENSION_PATH="$prefix/node_modules/@hydranix/computer-use-kwin/pi/extension/index.ts" \
-          COMPUTER_USE_LINUX_USE_PACKAGED_BINARY=1 \
+          COMPUTER_USE_KWIN_EXTENSION_PATH="$prefix/node_modules/@hydranix/computer-use-kwin/pi/extension/index.ts" \
+          COMPUTER_USE_KWIN_USE_PACKAGED_BINARY=1 \
             npm test --prefix pi -- pi-integration.test.ts
 
   release-binary:
