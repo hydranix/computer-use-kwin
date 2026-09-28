@@ -20,7 +20,11 @@ if (result.status !== 0) {
 	process.exit(result.status ?? 1);
 }
 
-const pack = JSON.parse(result.stdout)[0];
+const metadata = JSON.parse(result.stdout);
+const pack = Array.isArray(metadata) ? metadata[0] : Object.values(metadata)[0];
+if (!pack || !Array.isArray(pack.files) || typeof pack.unpackedSize !== "number") {
+	throw new Error("npm pack returned unexpected package metadata");
+}
 const paths = new Set(pack.files.map((file) => file.path));
 const missing = requiredFiles.filter((path) => !paths.has(path));
 if (missing.length > 0) {
