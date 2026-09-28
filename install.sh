@@ -3,7 +3,7 @@
 #
 # This script takes a fresh checkout from `git clone` to a working
 # `computer-use-linux mcp` binary in PATH plus all the system-side
-# prerequisites (AT-SPI, ydotoold, optional GNOME Shell extension).
+# prerequisites (AT-SPI, desktop portals, optional ydotoold).
 #
 # Each step is idempotent and individually skippable via flags.
 # Re-running the script on a fully provisioned host should print all-green
@@ -20,12 +20,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 OS_RELEASE_FILE="${COMPUTER_USE_LINUX_OS_RELEASE_FILE:-/etc/os-release}"
 UINPUT_DEVICE="${COMPUTER_USE_LINUX_UINPUT_DEVICE:-/dev/uinput}"
 BIN_NAME="computer-use-linux"
-COSMIC_HELPER_NAME="computer-use-linux-cosmic"
 INSTALL_DIR="${HOME}/.local/bin"
 INSTALL_PATH="${INSTALL_DIR}/${BIN_NAME}"
-COSMIC_HELPER_INSTALL_PATH="${INSTALL_DIR}/${COSMIC_HELPER_NAME}"
-EXT_UUID="computer-use-linux@avifenesh.dev"
-EXT_SRC_DIR="${SCRIPT_DIR}/gnome-shell-extension/${EXT_UUID}"
 
 # Color helpers (degrade gracefully when not on a tty).
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
@@ -61,9 +57,7 @@ trap 'rc=$?; if [[ $rc -ne 0 ]]; then printf "\n%sinstall.sh aborted (exit %d)%s
 SKIP_SYSTEM_DEPS=0
 SKIP_RUST=0
 SKIP_BUILD=0
-SKIP_ATSPI=0
 SKIP_YDOTOOL=0
-SKIP_GNOME_EXT=0
 SKIP_DOCTOR=0
 FORCE_UNKNOWN_DISTRO=0
 PACKAGE_MANAGER_OVERRIDE=""
@@ -75,22 +69,18 @@ ${C_BOLD}install.sh${C_RESET} — provision computer-use-linux on this machine.
 Usage: ./install.sh [flags]
 
 Steps (run in order, each idempotent):
-  1. Detect distro + display server
+  1. Detect distro
   2. Install system packages (apt/dnf/pacman)
   3. Install rustup toolchain
-  4. cargo build --release  →  ~/.local/bin/${BIN_NAME} and ${COSMIC_HELPER_NAME}
-  5. Enable AT-SPI toolkit accessibility (GNOME)
-  6. Install + enable ydotoold systemd --user service when available
-  7. Pack/install/enable GNOME Shell extension (Wayland + GNOME)
-  8. Run \`${BIN_NAME} doctor\` and report readiness
+  4. cargo build --release  →  ~/.local/bin/${BIN_NAME}
+  5. Install + enable optional ydotoold systemd --user service when available
+  6. Run \`${BIN_NAME} doctor\` and report portal and accessibility readiness
 
 Flags:
   --skip-system-deps      skip apt/dnf/pacman package install
   --skip-rust             skip rustup install
-  --skip-build            skip cargo build (assumes target/release/${BIN_NAME} and ${COSMIC_HELPER_NAME} exist)
-  --skip-atspi            skip toolkit-accessibility gsetting
+  --skip-build            skip cargo build (assumes target/release/${BIN_NAME} exists)
   --skip-ydotool          skip ydotoold user-service setup
-  --skip-gnome-extension  skip GNOME Shell extension install
   --skip-doctor           skip the final readiness check
   --force-unknown-distro  use the one supported package manager found on PATH
   --package-manager NAME  force apt, dnf, or pacman for system packages
@@ -103,9 +93,7 @@ while [[ $# -gt 0 ]]; do
         --skip-system-deps)     SKIP_SYSTEM_DEPS=1 ;;
         --skip-rust)            SKIP_RUST=1 ;;
         --skip-build)           SKIP_BUILD=1 ;;
-        --skip-atspi)           SKIP_ATSPI=1 ;;
         --skip-ydotool)         SKIP_YDOTOOL=1 ;;
-        --skip-gnome-extension) SKIP_GNOME_EXT=1 ;;
         --skip-doctor)          SKIP_DOCTOR=1 ;;
         --force-unknown-distro) FORCE_UNKNOWN_DISTRO=1 ;;
         --package-manager)
@@ -131,8 +119,6 @@ esac
 
 DISTRO_FAMILY=""
 PKG_MANAGER=""
-SESSION_TYPE=""
-X11_KEYBOARD_BACKEND_REQUIRED=0
 
 set_package_manager() {
     case "$1" in
@@ -162,7 +148,7 @@ available_package_managers() {
 }
 
 detect_distro() {
-    log_section "Step 1/9 — detect environment"
+    log_section "Step 1/6 — detect distro"
 
     if [[ "$(uname -s)" != "Linux" ]]; then
         die "this script only supports Linux (got $(uname -s)). macOS/*BSD are not supported."
@@ -223,49 +209,6 @@ detect_distro() {
         log_ok "distro family: ${DISTRO_FAMILY} (system packages skipped)"
     fi
 
-    # Display server.
-    local session_type=""
-    if [[ -n "${XDG_SESSION_ID:-}" ]] && command -v loginctl >/dev/null 2>&1; then
-        session_type="$(loginctl show-session "${XDG_SESSION_ID}" -p Type --value 2>/dev/null || true)"
-    fi
-    session_type="${session_type:-${XDG_SESSION_TYPE:-}}"
-    local normalized_session_type="${session_type//[[:space:]]/}"
-    local wayland_display="${WAYLAND_DISPLAY:-}"
-    local display="${DISPLAY:-}"
-    local wayland_session=0
-    if [[ -n "${normalized_session_type}" ]]; then
-        if [[ "${normalized_session_type,,}" == "wayland" ]]; then wayland_session=1; fi
-    elif [[ -n "${wayland_display//[[:space:]]/}" ]]; then
-        wayland_session=1
-    fi
-
-    X11_KEYBOARD_BACKEND_REQUIRED=0
-    if [[ ${wayland_session} -eq 0 && -n "${display//[[:space:]]/}" ]]; then
-        X11_KEYBOARD_BACKEND_REQUIRED=1
-    fi
-
-    if [[ ${wayland_session} -eq 1 ]]; then
-        SESSION_TYPE="wayland"
-    elif [[ ${X11_KEYBOARD_BACKEND_REQUIRED} -eq 1 ]]; then
-        SESSION_TYPE="x11"
-    else
-        SESSION_TYPE="${normalized_session_type:-unknown}"
-    fi
-
-    case "${SESSION_TYPE}" in
-        wayland) log_ok "display server: Wayland" ;;
-        x11)     log_warn "display server: X11 — supported but degraded (some features need Wayland)" ;;
-        *)       log_warn "display server: ${SESSION_TYPE} (unrecognised — proceeding anyway)" ;;
-    esac
-
-    local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
-    case "${desktop}" in
-        *GNOME*)         log_ok "compositor: GNOME (${desktop})" ;;
-        *KDE*|*Plasma*)  log_warn "compositor: KDE (${desktop}) — untested, AT-SPI step will be skipped" ;;
-        *sway*)          log_warn "compositor: sway — untested" ;;
-        *Hyprland*)      log_warn "compositor: hyprland — untested" ;;
-        *)               log_warn "compositor: ${desktop} — untested" ;;
-    esac
 }
 
 # -----------------------------------------------------------------------------
@@ -288,7 +231,7 @@ install_optional_ydotool() {
     fi
     if ! ydotool_package_available; then
         log_warn "optional ydotool package is unavailable from configured ${PKG_MANAGER} repositories"
-        log_info "a RemoteDesktop portal on Wayland or xdotool on X11 may still satisfy doctor"
+        log_info "the desktop RemoteDesktop portal may still satisfy doctor"
         return 0
     fi
 
@@ -298,40 +241,29 @@ install_optional_ydotool() {
         dnf)    sudo dnf install -y ydotool ;;
         pacman) sudo pacman -S --needed --noconfirm ydotool ;;
     esac || {
-        log_warn "optional ydotool install failed — doctor will require a keyboard-capable portal or xdotool backend"
+        log_warn "optional ydotool install failed — doctor will require a keyboard-capable desktop portal"
         return 0
     }
 }
 
 install_system_deps() {
-    log_section "Step 2/9 — system packages"
+    log_section "Step 2/6 — system packages"
     if [[ ${SKIP_SYSTEM_DEPS} -eq 1 ]]; then log_skip "--skip-system-deps"; return 0; fi
 
-    local desktop="${XDG_CURRENT_DESKTOP:-}"
     case "${PKG_MANAGER}" in
         apt)
             local pkgs=(build-essential pkg-config libdbus-1-dev libssl-dev curl at-spi2-core)
-            if [[ ${X11_KEYBOARD_BACKEND_REQUIRED} -eq 1 ]]; then pkgs+=(xdotool); fi
             sudo apt-get update -qq
-            if [[ "${desktop}" == *GNOME* ]] && ! command -v gnome-extensions >/dev/null 2>&1; then
-                if apt-cache show gnome-shell >/dev/null 2>&1; then
-                    pkgs+=(gnome-shell)
-                else
-                    log_warn "gnome-extensions CLI missing, and no gnome-shell apt package was found"
-                fi
-            fi
             log_info "sudo apt-get install -y ${pkgs[*]}"
             sudo apt-get install -y "${pkgs[@]}" || { log_fail "apt-get install failed"; return 1; }
             ;;
         dnf)
             local pkgs=(gcc pkgconfig dbus-devel openssl-devel curl at-spi2-core)
-            if [[ ${X11_KEYBOARD_BACKEND_REQUIRED} -eq 1 ]]; then pkgs+=(xdotool); fi
             log_info "sudo dnf install -y ${pkgs[*]}"
             sudo dnf install -y "${pkgs[@]}" || { log_fail "dnf install failed"; return 1; }
             ;;
         pacman)
             local pkgs=(base-devel pkgconf dbus openssl curl at-spi2-core)
-            if [[ ${X11_KEYBOARD_BACKEND_REQUIRED} -eq 1 ]]; then pkgs+=(xdotool); fi
             log_info "sudo pacman -S --needed --noconfirm ${pkgs[*]}"
             sudo pacman -S --needed --noconfirm "${pkgs[@]}" || { log_fail "pacman install failed"; return 1; }
             ;;
@@ -345,7 +277,7 @@ install_system_deps() {
 # -----------------------------------------------------------------------------
 
 install_rust() {
-    log_section "Step 3/9 — Rust toolchain"
+    log_section "Step 3/6 — Rust toolchain"
     if [[ ${SKIP_RUST} -eq 1 ]]; then log_skip "--skip-rust"; return 0; fi
 
     if command -v cargo >/dev/null 2>&1; then
@@ -371,19 +303,16 @@ install_rust() {
 # -----------------------------------------------------------------------------
 
 build_and_install() {
-    log_section "Step 4/9 — build & install binary"
+    log_section "Step 4/6 — build & install binary"
     local built="${SCRIPT_DIR}/target/release/${BIN_NAME}"
-    local cosmic_helper_built="${SCRIPT_DIR}/target/release/${COSMIC_HELPER_NAME}"
 
     if [[ ${SKIP_BUILD} -eq 1 ]]; then
-        log_skip "--skip-build (expecting prebuilt binaries at ${built} and ${cosmic_helper_built})"
+        log_skip "--skip-build (expecting a prebuilt binary at ${built})"
     else
         ( cd "${SCRIPT_DIR}" && cargo build --release ) || { log_fail "cargo build failed"; return 1; }
         log_ok "cargo build --release succeeded"
     fi
-
     [[ -x "${built}" ]] || { log_fail "binary not found at ${built}"; return 1; }
-    [[ -x "${cosmic_helper_built}" ]] || { log_fail "COSMIC helper not found at ${cosmic_helper_built}"; return 1; }
 
     mkdir -p "${INSTALL_DIR}"
     if [[ -f "${INSTALL_PATH}" ]] && cmp -s "${built}" "${INSTALL_PATH}"; then
@@ -391,12 +320,6 @@ build_and_install() {
     else
         install -m 0755 "${built}" "${INSTALL_PATH}"
         log_ok "installed ${INSTALL_PATH}"
-    fi
-    if [[ -f "${COSMIC_HELPER_INSTALL_PATH}" ]] && cmp -s "${cosmic_helper_built}" "${COSMIC_HELPER_INSTALL_PATH}"; then
-        log_ok "COSMIC helper already up to date at ${COSMIC_HELPER_INSTALL_PATH}"
-    else
-        install -m 0755 "${cosmic_helper_built}" "${COSMIC_HELPER_INSTALL_PATH}"
-        log_ok "installed ${COSMIC_HELPER_INSTALL_PATH}"
     fi
 
     case ":${PATH}:" in
@@ -407,34 +330,7 @@ build_and_install() {
 }
 
 # -----------------------------------------------------------------------------
-# Step 5: AT-SPI toolkit accessibility (GNOME-only)
-# -----------------------------------------------------------------------------
-
-enable_atspi() {
-    log_section "Step 5/9 — AT-SPI toolkit accessibility"
-    if [[ ${SKIP_ATSPI} -eq 1 ]]; then log_skip "--skip-atspi"; return 0; fi
-
-    if [[ "${XDG_CURRENT_DESKTOP:-}" != *GNOME* ]]; then
-        log_warn "non-GNOME desktop — skipping (set toolkit-accessibility manually if needed)"
-        return 0
-    fi
-    if ! command -v gsettings >/dev/null 2>&1; then
-        log_warn "gsettings not available — skipping"
-        return 0
-    fi
-
-    local current
-    current="$(gsettings get org.gnome.desktop.interface toolkit-accessibility 2>/dev/null || echo 'false')"
-    if [[ "${current}" == "true" ]]; then
-        log_ok "toolkit-accessibility already enabled"
-    else
-        gsettings set org.gnome.desktop.interface toolkit-accessibility true
-        log_ok "toolkit-accessibility enabled"
-    fi
-}
-
-# -----------------------------------------------------------------------------
-# Step 6: ydotoold user service
+# Step 5: optional ydotoold user service
 # -----------------------------------------------------------------------------
 
 systemd_user_manager_available() {
@@ -457,7 +353,7 @@ show_manual_ydotoold_guidance() {
 }
 
 setup_ydotoold() {
-    log_section "Step 6/9 — ydotoold user service"
+    log_section "Step 5/6 — optional ydotoold user service"
     if [[ ${SKIP_YDOTOOL} -eq 1 ]]; then log_skip "--skip-ydotool"; return 0; fi
 
     if ! command -v ydotoold >/dev/null 2>&1; then
@@ -531,64 +427,7 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# Step 7: GNOME Shell extension (Wayland + GNOME only)
-# -----------------------------------------------------------------------------
-
-install_gnome_extension() {
-    log_section "Step 7/9 — GNOME Shell extension"
-    if [[ ${SKIP_GNOME_EXT} -eq 1 ]]; then log_skip "--skip-gnome-extension"; return 0; fi
-
-    if [[ "${XDG_CURRENT_DESKTOP:-}" != *GNOME* ]]; then
-        log_skip "non-GNOME desktop"
-        return 0
-    fi
-    local session_type="${XDG_SESSION_TYPE:-}"
-    if [[ -z "${session_type}" ]] && command -v loginctl >/dev/null 2>&1 && [[ -n "${XDG_SESSION_ID:-}" ]]; then
-        session_type="$(loginctl show-session "${XDG_SESSION_ID}" -p Type --value 2>/dev/null || true)"
-    fi
-    if [[ "${session_type}" != "wayland" ]]; then
-        log_skip "not a Wayland session (extension only needed under GNOME Wayland)"
-        return 0
-    fi
-    if ! command -v gnome-extensions >/dev/null 2>&1; then
-        log_warn "gnome-extensions CLI missing — install gnome-shell or your distro's package that provides it"
-        return 0
-    fi
-    if [[ ! -d "${EXT_SRC_DIR}" ]]; then
-        log_warn "extension source directory not found at ${EXT_SRC_DIR} — skipping"
-        return 0
-    fi
-
-    # Already installed & enabled? Nothing to do.
-    if gnome-extensions list --enabled 2>/dev/null | grep -qx "${EXT_UUID}"; then
-        log_ok "extension ${EXT_UUID} already enabled"
-        return 0
-    fi
-
-    local pack_dir
-    pack_dir="$(mktemp -d)"
-    ( cd "${pack_dir}" && gnome-extensions pack "${EXT_SRC_DIR}" ) ||
-        { log_fail "gnome-extensions pack failed"; rm -rf "${pack_dir}"; return 1; }
-
-    local zipfile
-    zipfile="$(find "${pack_dir}" -maxdepth 1 -name '*.shell-extension.zip' | head -n1)"
-    [[ -f "${zipfile}" ]] || { log_fail "packed zip not produced"; rm -rf "${pack_dir}"; return 1; }
-
-    gnome-extensions install --force "${zipfile}" || { log_fail "gnome-extensions install failed"; rm -rf "${pack_dir}"; return 1; }
-    log_ok "extension installed (${zipfile##*/})"
-    rm -rf "${pack_dir}"
-
-    if gnome-extensions enable "${EXT_UUID}" 2>/dev/null; then
-        log_ok "extension enabled"
-    else
-        log_warn "could not enable ${EXT_UUID} yet — GNOME Shell may not have rescanned"
-        log_info "log out and back in, then run:"
-        log_info "  gnome-extensions enable ${EXT_UUID}"
-    fi
-}
-
-# -----------------------------------------------------------------------------
-# Step 8: doctor readiness check
+# Step 6: doctor readiness check
 # -----------------------------------------------------------------------------
 
 doctor_install_prerequisites_ready_raw() {
@@ -601,7 +440,7 @@ doctor_install_prerequisites_ready_raw() {
 }
 
 run_doctor() {
-    log_section "Step 8/9 — doctor readiness"
+    log_section "Step 6/6 — portal and accessibility readiness"
     if [[ ${SKIP_DOCTOR} -eq 1 ]]; then log_skip "--skip-doctor"; return 0; fi
 
     [[ -x "${INSTALL_PATH}" ]] || { log_fail "${INSTALL_PATH} missing — cannot run doctor"; return 1; }
@@ -685,12 +524,10 @@ main() {
     install_system_deps  || record_failure "system deps"
     install_rust         || record_failure "rust toolchain"
     build_and_install    || record_failure "build/install"
-    enable_atspi         || record_failure "atspi"
     setup_ydotoold       || record_failure "ydotoold"
-    install_gnome_extension || record_failure "gnome extension"
     run_doctor           || record_failure "doctor"
 
-    log_section "Step 9/9 — summary"
+    log_section "Summary"
     if [[ ${#FAILED_CHECKS[@]} -eq 0 ]]; then
         log_ok "all steps completed successfully"
         exit 0

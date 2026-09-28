@@ -1,7 +1,7 @@
 {
   "name": "@agent-sh/computer-use-linux",
   "version": "0.7.4",
-  "description": "Linux desktop-control MCP server: AT-SPI accessibility trees, Wayland/X11 input, screenshots, and compositor window targeting.",
+  "description": "Linux desktop-control MCP server for KDE Plasma 6 Wayland: AT-SPI accessibility, desktop portal capture and input, and KWin window targeting.",
   "license": "MIT",
   "type": "commonjs",
   "homepage": "https://github.com/agent-sh/computer-use-linux#readme",

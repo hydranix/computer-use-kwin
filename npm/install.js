@@ -16,7 +16,6 @@ const archToTarget = {
 
 const binDir = path.join(__dirname, 'bin');
 const binaryPath = path.join(binDir, `computer-use-linux-${process.platform}-${process.arch}`);
-const cosmicHelperPath = path.join(binDir, 'computer-use-linux-cosmic');
 
 function fail(message) {
   console.error(`[computer-use-linux] ${message}`);
@@ -27,10 +26,6 @@ function copyLocalBinary(source) {
   fs.mkdirSync(binDir, { recursive: true });
   fs.copyFileSync(source, binaryPath);
   fs.chmodSync(binaryPath, 0o755);
-  if (process.env.COMPUTER_USE_LINUX_LOCAL_COSMIC_HELPER) {
-    fs.copyFileSync(process.env.COMPUTER_USE_LINUX_LOCAL_COSMIC_HELPER, cosmicHelperPath);
-    fs.chmodSync(cosmicHelperPath, 0o755);
-  }
   console.log(`[computer-use-linux] installed local binary from ${source}`);
 }
 
@@ -99,22 +94,17 @@ async function main() {
   }
 
   const asset = `computer-use-linux-${targetArch}-unknown-linux-gnu`;
-  const cosmicAsset = `computer-use-linux-cosmic-${targetArch}-unknown-linux-gnu`;
   const baseUrl =
     process.env.COMPUTER_USE_LINUX_DOWNLOAD_BASE ||
     `https://github.com/agent-sh/computer-use-linux/releases/download/v${pkg.version}`;
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'computer-use-linux-'));
   const tmpBinary = path.join(tmpDir, asset);
   const tmpSha = path.join(tmpDir, `${asset}.sha256`);
-  const tmpCosmic = path.join(tmpDir, cosmicAsset);
-  const tmpCosmicSha = path.join(tmpDir, `${cosmicAsset}.sha256`);
 
   try {
     console.log(`[computer-use-linux] downloading ${asset} from ${baseUrl}`);
     await download(`${baseUrl}/${asset}`, tmpBinary);
     await download(`${baseUrl}/${asset}.sha256`, tmpSha);
-    await download(`${baseUrl}/${cosmicAsset}`, tmpCosmic);
-    await download(`${baseUrl}/${cosmicAsset}.sha256`, tmpCosmicSha);
 
     const expected = parseSha256(fs.readFileSync(tmpSha, 'utf8'));
     const actual = sha256File(tmpBinary);
@@ -122,18 +112,10 @@ async function main() {
       fail(`sha256 mismatch for ${asset}: expected ${expected}, got ${actual}`);
     }
 
-    const expectedCosmic = parseSha256(fs.readFileSync(tmpCosmicSha, 'utf8'));
-    const actualCosmic = sha256File(tmpCosmic);
-    if (actualCosmic !== expectedCosmic) {
-      fail(`sha256 mismatch for ${cosmicAsset}: expected ${expectedCosmic}, got ${actualCosmic}`);
-    }
-
     fs.mkdirSync(binDir, { recursive: true });
     fs.copyFileSync(tmpBinary, binaryPath);
     fs.chmodSync(binaryPath, 0o755);
-    fs.copyFileSync(tmpCosmic, cosmicHelperPath);
-    fs.chmodSync(cosmicHelperPath, 0o755);
-    console.log(`[computer-use-linux] installed ${asset} and ${cosmicAsset}`);
+    console.log(`[computer-use-linux] installed ${asset}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -118,12 +118,12 @@ test_skip_system_deps_allows_missing_override() (
     assert_eq "${DISTRO_FAMILY}" "debian" || return 1
 )
 
-test_startx_system_deps_include_xdotool() (
+test_system_deps_keep_atspi_without_x11_packages() (
     export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
-    export XDG_SESSION_TYPE=tty
+    export XDG_SESSION_TYPE=x11
     export DISPLAY=:0
     unset WAYLAND_DISPLAY XDG_SESSION_ID
-    export XDG_CURRENT_DESKTOP=unknown
+    export XDG_CURRENT_DESKTOP=KDE
 
     # shellcheck source=../install.sh
     source "${INSTALLER}"
@@ -134,30 +134,64 @@ test_startx_system_deps_include_xdotool() (
     local output
     detect_distro >/dev/null || return 1
     output="$(install_system_deps)" || return 1
-    assert_eq "${X11_KEYBOARD_BACKEND_REQUIRED}" "1" || return 1
     assert_contains "${output}" "pacman -S --needed --noconfirm" || return 1
-    assert_contains "${output}" "xdotool" || return 1
+    assert_contains "${output}" "at-spi2-core" || return 1
+    assert_not_contains "${output}" "xdotool" || return 1
+    assert_not_contains "${output}" "gnome-shell" || return 1
 )
 
-test_wayland_system_deps_exclude_xdotool() (
-    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.artix"
-    export XDG_SESSION_TYPE=wayland
-    export WAYLAND_DISPLAY=wayland-0
-    export DISPLAY=:0
-    unset XDG_SESSION_ID
-    export XDG_CURRENT_DESKTOP=unknown
+test_gnome_desktop_does_not_install_gnome_shell() (
+    export COMPUTER_USE_LINUX_OS_RELEASE_FILE="${FIXTURE_DIR}/os-release.unknown"
+    export XDG_CURRENT_DESKTOP=GNOME
+    unset XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY XDG_SESSION_ID
 
     # shellcheck source=../install.sh
     source "${INSTALLER}"
-    package_manager_available() { [[ "$1" == "pacman" ]]; }
+    PACKAGE_MANAGER_OVERRIDE=apt
+    package_manager_available() { [[ "$1" == "apt" ]]; }
+    apt-cache() { [[ "$1" == "show" && "$2" == "gnome-shell" ]]; }
+    command() {
+        if [[ "$1" == "-v" && "$2" == "gnome-extensions" ]]; then return 1; fi
+        builtin command "$@"
+    }
     sudo() { printf 'sudo %s\n' "$*"; }
     install_optional_ydotool() { :; }
 
     local output
     detect_distro >/dev/null || return 1
     output="$(install_system_deps)" || return 1
-    assert_eq "${X11_KEYBOARD_BACKEND_REQUIRED}" "0" || return 1
+    assert_contains "${output}" "at-spi2-core" || return 1
+    assert_not_contains "${output}" "gnome-shell" || return 1
+)
+
+test_installer_help_omits_removed_setup() (
+    local output
+    output="$(bash "${INSTALLER}" --help)" || return 1
+    assert_contains "${output}" "computer-use-linux" || return 1
+    assert_not_contains "${output}" "COSMIC" || return 1
+    assert_not_contains "${output}" "GNOME" || return 1
+    assert_not_contains "${output}" "gsettings" || return 1
     assert_not_contains "${output}" "xdotool" || return 1
+)
+
+test_build_installs_only_main_binary() (
+    # shellcheck source=../install.sh
+    source "${INSTALLER}"
+
+    local fixture_dir
+    fixture_dir="$(mktemp -d)"
+    trap 'rm -rf -- "${fixture_dir}"' EXIT
+    SCRIPT_DIR="${fixture_dir}"
+    INSTALL_DIR="${fixture_dir}/home/.local/bin"
+    INSTALL_PATH="${INSTALL_DIR}/computer-use-linux"
+    mkdir -p "${SCRIPT_DIR}/target/release"
+    printf 'main binary\n' >"${SCRIPT_DIR}/target/release/computer-use-linux"
+    chmod +x "${SCRIPT_DIR}/target/release/computer-use-linux"
+    SKIP_BUILD=1
+
+    build_and_install >/dev/null || return 1
+    [[ -x "${INSTALL_PATH}" ]] || return 1
+    [[ ! -e "${INSTALL_DIR}/computer-use-linux-cosmic" ]]
 )
 
 test_non_systemd_host_gets_manual_guidance() (
@@ -268,8 +302,10 @@ run_test "Artix selects pacman" test_artix_selects_pacman
 run_test "unknown distro selects its only supported manager" test_unknown_distro_selects_only_available_manager
 run_test "--skip-system-deps needs no package manager" test_skip_system_deps_needs_no_package_manager
 run_test "--skip-system-deps allows a missing override" test_skip_system_deps_allows_missing_override
-run_test "startx system dependencies include xdotool" test_startx_system_deps_include_xdotool
-run_test "Wayland system dependencies exclude xdotool" test_wayland_system_deps_exclude_xdotool
+run_test "system dependencies retain AT-SPI without X11 packages" test_system_deps_keep_atspi_without_x11_packages
+run_test "GNOME desktops do not install GNOME Shell" test_gnome_desktop_does_not_install_gnome_shell
+run_test "installer help omits removed setup" test_installer_help_omits_removed_setup
+run_test "build installs only the main binary" test_build_installs_only_main_binary
 run_test "non-systemd host gets manual ydotoold guidance" test_non_systemd_host_gets_manual_guidance
 run_test "non-systemd host requires uinput access" test_non_systemd_host_requires_uinput_access
 run_test "doctor accepts platform capability blockers" test_doctor_accepts_platform_capability_blockers
