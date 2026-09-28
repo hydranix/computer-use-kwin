@@ -73,7 +73,7 @@ pub struct DoctorReport {
 pub struct CapabilityMap {
     /// Pointer/keyboard injection backends, best-first.
     pub input: Vec<String>,
-    /// Screen capture backends, best-first.
+    /// Screen capture backends available through the desktop portal.
     pub screenshot: Vec<String>,
     /// Window listing/focus backends available.
     pub window_control: Vec<String>,
@@ -105,10 +105,6 @@ pub struct PlatformReport {
     pub dbus_session_bus_address: Option<String>,
     pub xdg_runtime_dir: Option<String>,
     pub gnome_shell_version: Check,
-    pub gnome_screenshot: Check,
-    /// Native X11 display for the root-window screenshot route. Fails on
-    /// Wayland sessions, including XWayland, by design.
-    pub x11_display: Check,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -161,9 +157,8 @@ pub struct ReadinessReport {
     pub can_focus_apps: bool,
     pub can_focus_windows: bool,
     pub can_send_development_input: bool,
-    /// A screenshot route was detected (GNOME Shell, an XDG Screenshot portal
-    /// that exports its Screenshot method, or the gnome-screenshot fallback).
-    /// Detection only: no test capture is taken.
+    /// The XDG portal exports its Screenshot method. Detection only: no test
+    /// capture is taken.
     pub can_capture_screenshots: bool,
     pub recommended_next_step: String,
     pub blockers: Vec<String>,
@@ -215,7 +210,7 @@ pub fn doctor_report() -> DoctorReport {
         &accessibility,
         &windowing,
         &input,
-        !screenshot_backends(&platform, &portals).is_empty(),
+        portals.screenshot.ok,
     );
 
     let capabilities = capability_map_with_portal_keyboard(
@@ -305,7 +300,11 @@ fn capability_map_with_portal_keyboard(
         input_backends.push("portal".to_string());
     }
 
-    let screenshot_backends = screenshot_backends(platform, portals);
+    let screenshot_backends = if portals.screenshot.ok {
+        vec!["portal".to_string()]
+    } else {
+        Vec::new()
+    };
 
     let mut window_backends = Vec::new();
     if windowing.kwin.ok {
@@ -671,26 +670,6 @@ fn platform_report() -> PlatformReport {
         dbus_session_bus_address: dbus_session_address(),
         xdg_runtime_dir: xdg_runtime_dir().map(|path| path.display().to_string()),
         gnome_shell_version: command_check("gnome-shell", &["--version"]),
-        gnome_screenshot: command_check("gnome-screenshot", &["--version"]),
-        x11_display: x11_display_check(),
-    }
-}
-
-fn x11_display_check() -> Check {
-    if !crate::x11_display::is_native_x11_session() {
-        return Check::fail("not a native X11 session");
-    }
-    // doctor runs on a blocking thread; connect directly with the same bound
-    // the async helper uses so a wedged server cannot stall the report.
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let result = crate::x11_display::X11Display::connect().map(|display| display.describe());
-        let _ = sender.send(result);
-    });
-    match receiver.recv_timeout(crate::x11_display::X11_QUERY_TIMEOUT) {
-        Ok(Ok(detail)) => Check::ok(detail),
-        Ok(Err(error)) => Check::fail(format!("{error:#}")),
-        Err(_) => Check::fail("X server did not answer within 2s"),
     }
 }
 
@@ -807,28 +786,8 @@ fn readiness_report(
         accessibility,
         windowing,
         input,
-        !screenshot_backends(platform, portals).is_empty(),
+        portals.screenshot.ok,
     )
-}
-
-/// Screenshot routes in the order `capture_screenshot_raw` tries them. Both the
-/// capability map and readiness read this list so they cannot disagree.
-fn screenshot_backends(platform: &PlatformReport, portals: &PortalReport) -> Vec<String> {
-    let mut backends = Vec::new();
-    if platform.gnome_shell_version.ok {
-        backends.push("gnome_shell".to_string());
-    }
-    if portals.screenshot.ok {
-        backends.push("portal".to_string());
-    }
-    if platform.x11_display.ok {
-        backends.push("x11".to_string());
-    }
-    // Subprocess fallback for background/systemd contexts the DBus paths reject.
-    if platform.gnome_screenshot.ok {
-        backends.push("gnome_screenshot".to_string());
-    }
-    backends
 }
 
 fn readiness_report_with_portal_keyboard(
@@ -877,7 +836,7 @@ fn readiness_report_with_portal_keyboard(
 
     if !can_capture_screenshots {
         blockers.push(
-            "No screenshot route was detected: GNOME Shell is absent, the XDG portal does not export org.freedesktop.portal.Screenshot, this is not a native X11 session, and gnome-screenshot is not installed. get_app_state and screenshot return no image; element-aware actions from the accessibility tree still work."
+            "The XDG portal does not export org.freedesktop.portal.Screenshot. get_app_state and screenshot return no image; element-aware actions from the accessibility tree still work."
                 .to_string(),
         );
     }
@@ -900,7 +859,7 @@ fn readiness_report_with_portal_keyboard(
         "Enable a keyboard-capable input backend: enable the XDG RemoteDesktop portal or install wtype on compatible Wayland compositors, install xdotool for X11, or start ydotoold with a socket accessible to this desktop user."
             .to_string()
     } else if !can_capture_screenshots {
-        "Enable a screenshot route: install an XDG desktop portal backend that implements Screenshot for this desktop, or install gnome-screenshot. Accessibility-tree actions work meanwhile."
+        "Enable screenshot capture by installing an XDG desktop portal backend that implements Screenshot. Accessibility-tree actions work meanwhile."
             .to_string()
     } else {
         "Computer Use is ready: AT-SPI tree support, window targeting, and a Linux input backend are available."
@@ -1515,8 +1474,6 @@ mod tests {
             dbus_session_bus_address: Some("unix:path=/run/user/1000/bus".to_string()),
             xdg_runtime_dir: Some("/run/user/1000".to_string()),
             gnome_shell_version: Check::ok("GNOME Shell 46.0"),
-            gnome_screenshot: Check::ok("gnome-screenshot 41.0"),
-            x11_display: Check::fail("not a native X11 session"),
         }
     }
 
@@ -1525,7 +1482,7 @@ mod tests {
             desktop_portal: Check::ok("ok"),
             remote_desktop,
             screencast: Check::fail("missing"),
-            screenshot: Check::fail("missing"),
+            screenshot: Check::ok(".Screenshot method sa{sv} o -"),
             input_capture: Check::fail("missing"),
             mutter_remote_desktop: Check::fail("missing"),
             mutter_screencast: Check::fail("missing"),
@@ -2202,13 +2159,12 @@ mod tests {
 
     #[test]
     fn readiness_blocks_when_no_screenshot_route_is_detected() {
-        let mut platform = platform_report();
-        platform.gnome_shell_version = Check::fail("No such file or directory (os error 2)");
-        platform.gnome_screenshot = Check::fail("No such file or directory (os error 2)");
+        let platform = platform_report();
         let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
         let windowing = windowing_report(true, true);
         let input = input_report(true);
-        let portals = portal_report(Check::fail("missing"));
+        let mut portals = portal_report(Check::fail("missing"));
+        portals.screenshot = Check::fail("missing");
 
         let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
 
@@ -2216,49 +2172,39 @@ mod tests {
         assert!(readiness
             .blockers
             .iter()
-            .any(|blocker| blocker.contains("No screenshot route was detected")));
+            .any(|blocker| blocker.contains("does not export org.freedesktop.portal.Screenshot")));
         assert!(readiness
             .recommended_next_step
-            .contains("Enable a screenshot route"));
+            .contains("Enable screenshot capture"));
         let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
         assert!(capabilities.screenshot.is_empty());
         assert_eq!(capabilities.preferred.screenshot, None);
     }
 
     #[test]
-    fn native_x11_display_is_a_screenshot_route_ahead_of_gnome_screenshot() {
-        let mut platform = platform_report();
-        platform.gnome_shell_version = Check::fail("missing");
-        platform.x11_display = Check::ok("native X11 root window 2880x1920, depth 24");
-        let portals = portal_report(Check::fail("missing"));
+    fn screenshot_readiness_and_capability_require_portal_screenshot() {
+        let platform = platform_report();
         let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
         let windowing = windowing_report(true, true);
         let input = input_report(true);
+        let mut portals = portal_report(Check::fail("missing"));
+        portals.screenshot = Check::fail("missing");
 
-        let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
         let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
+        let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
 
-        assert_eq!(capabilities.screenshot, ["x11", "gnome_screenshot"]);
-        assert_eq!(capabilities.preferred.screenshot.as_deref(), Some("x11"));
-        assert!(readiness.can_capture_screenshots);
-    }
+        assert!(!readiness.can_capture_screenshots);
+        assert!(capabilities.screenshot.is_empty());
+        assert_eq!(capabilities.preferred.screenshot, None);
 
-    #[test]
-    fn readiness_and_capabilities_share_the_screenshot_route_list() {
-        let mut platform = platform_report();
-        platform.gnome_shell_version = Check::fail("missing");
-        platform.gnome_screenshot = Check::fail("missing");
         let mut portals = portal_report(Check::fail("missing"));
         portals.screenshot = Check::ok(".Screenshot method sa{sv} o -");
-        let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
-        let windowing = windowing_report(true, true);
-        let input = input_report(true);
-
         let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
         let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
 
         assert!(readiness.can_capture_screenshots);
         assert_eq!(capabilities.screenshot, ["portal"]);
+        assert_eq!(capabilities.preferred.screenshot.as_deref(), Some("portal"));
     }
 
     #[test]
