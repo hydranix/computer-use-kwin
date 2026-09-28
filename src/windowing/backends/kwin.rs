@@ -518,7 +518,7 @@ fn temporary_kwin_plugin_name() -> Result<String> {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     Ok(format!(
-        "computer_use_linux_kwin_window_query_{pid}_{sequence}_{nonce}"
+        "computer_use_kwin_kwin_window_query_{pid}_{sequence}_{nonce}"
     ))
 }
 
@@ -1468,11 +1468,18 @@ mod adapter_tests {
     }
 
     #[test]
+    fn temporary_kwin_plugin_names_use_computer_use_kwin_prefix() {
+        let plugin_name = temporary_kwin_plugin_name().unwrap();
+
+        assert!(plugin_name.starts_with("computer_use_kwin_kwin_window_query_"));
+    }
+
+    #[test]
     fn kwin_window_script_supports_plasma5_and_plasma6_window_apis() {
         let script = kwin_window_script_source(
             ":1.234",
             "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
-            "computer_use_linux_kwin_window_query_test",
+            "computer_use_kwin_kwin_window_query_test",
         )
         .unwrap();
 
@@ -1496,7 +1503,7 @@ mod adapter_tests {
         let script = kwin_activate_script_source(
             ":1.234",
             "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
-            "computer_use_linux_kwin_window_query_test",
+            "computer_use_kwin_kwin_window_query_test",
             "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
         )
         .unwrap();
@@ -1517,7 +1524,7 @@ mod adapter_tests {
         let args = (
             ":1.234",
             "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
-            "computer_use_linux_kwin_window_query_test",
+            "computer_use_kwin_kwin_window_query_test",
             "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
         );
         let move_script =
@@ -1569,7 +1576,7 @@ mod callback_tests {
                 sender,
                 expected_sender: OwnedUniqueName::try_from(":1.42").unwrap(),
                 expected_kind: KwinCallbackKind::Windows,
-                plugin_name: "computer_use_linux_kwin_window_query_test".to_string(),
+                plugin_name: "computer_use_kwin_kwin_window_query_test".to_string(),
                 delivered: AtomicBool::new(false),
             },
             receiver,
@@ -1579,7 +1586,7 @@ mod callback_tests {
     #[test]
     fn callback_accepts_only_the_kwin_owner_requested_method_nonce_and_first_response() {
         let (callback, receiver) = callback();
-        let valid = r#"{"backend":"kwin","pluginName":"computer_use_linux_kwin_window_query_test","windows":[]}"#;
+        let valid = r#"{"backend":"kwin","pluginName":"computer_use_kwin_kwin_window_query_test","windows":[]}"#;
 
         assert!(callback
             .accept(Some(":1.99"), KwinCallbackKind::Windows, valid)
@@ -1593,7 +1600,7 @@ mod callback_tests {
 
         for payload in [
             "not-json",
-            r#"{"backend":"other","pluginName":"computer_use_linux_kwin_window_query_test","windows":[]}"#,
+            r#"{"backend":"other","pluginName":"computer_use_kwin_kwin_window_query_test","windows":[]}"#,
             r#"{"backend":"kwin","pluginName":"wrong","windows":[]}"#,
         ] {
             assert!(callback
@@ -2100,7 +2107,7 @@ pub(crate) mod transaction_tests {
             .build()
             .await
             .unwrap();
-        let plugin_name = "computer_use_linux_kwin_window_query_duplicate";
+        let plugin_name = "computer_use_kwin_kwin_window_query_duplicate";
         let callback_path = format!("{KWIN_CALLBACK_OBJECT_PATH_PREFIX}/{plugin_name}");
         let expected_sender = service_connection.unique_name().unwrap().to_owned();
         let expected_sender_name = expected_sender.to_string();
