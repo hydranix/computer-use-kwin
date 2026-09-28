@@ -221,22 +221,22 @@ Native tools require Pi 0.84.4 or newer (Node.js 22.19 or newer). The
 standalone npm CLI wrapper continues to support Node.js 18 or newer.
 
 ```
-computer_use_linux_tools({ tools: ["doctor", "list_windows"] })
-computer_use_linux_doctor({})
-computer_use_linux_list_windows({})
+computer_use_kwin_tools({ tools: ["doctor", "list_windows"] })
+computer_use_kwin_doctor({})
+computer_use_kwin_list_windows({})
 ```
 
 You can also search by capability:
 
 ```
-computer_use_linux_tools({ query: "observe a window and click a control" })
+computer_use_kwin_tools({ query: "observe a window and click a control" })
 ```
 
 No separate MCP adapter or manual MCP configuration is required. Pi starts one
 computer-use-linux process lazily on the first real tool call, reuses it for the
 session so accessibility snapshots remain valid, serializes desktop actions,
 and closes it on reload, session switch, or exit. See the
-[Pi setup guide](skills/computer-use-linux/references/pi-setup.md) for migration
+[Pi setup guide](skills/computer-use-kwin/references/pi-setup.md) for migration
 from older adapter-based installs.
 
 ### Hermes Agent
