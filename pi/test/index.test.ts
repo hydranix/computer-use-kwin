@@ -419,6 +419,7 @@ describe("native Pi extension", () => {
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD", "1");
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD", "1");
 		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER", "1");
+		vi.stubEnv("GDMSESSION", "gnome");
 		vi.stubEnv("HYPRLAND_INSTANCE_SIGNATURE", "hyprland");
 		vi.stubEnv("I3SOCK", "/run/i3.sock");
 		vi.stubEnv("SWAYSOCK", "/run/sway.sock");
@@ -451,6 +452,7 @@ describe("native Pi extension", () => {
 			"HYPRLAND_INSTANCE_SIGNATURE",
 			"I3SOCK",
 			"SWAYSOCK",
+			"GDMSESSION",
 			"GSETTINGS_SCHEMA_DIR",
 			"GIO_EXTRA_MODULES",
 			"GI_TYPELIB_PATH",

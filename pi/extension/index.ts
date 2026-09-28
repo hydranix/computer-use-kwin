@@ -203,7 +203,6 @@ function runtimeEnvironment(): Record<string, string> {
 		"XDG_CACHE_HOME",
 		"XDG_STATE_HOME",
 		"DESKTOP_SESSION",
-		"GDMSESSION",
 		"YDOTOOL_SOCKET",
 		"LD_LIBRARY_PATH",
 		"NIX_LD",
