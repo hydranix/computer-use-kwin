@@ -378,6 +378,50 @@ describe("native Pi extension", () => {
 		expect(FakeMcpClient.instances[0]?.closed).toBe(1);
 	});
 
+	it("forwards retained runtime settings but not removed input overrides", async () => {
+		vi.stubEnv("COMPUTER_USE_LINUX_BIN", process.execPath);
+		vi.stubEnv("YDOTOOL_SOCKET", "/run/user/1000/ydotool.sock");
+		vi.stubEnv("COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT", "1");
+		vi.stubEnv("CU_DISABLE_ABS_POINTER", "1");
+		vi.stubEnv("COMPUTER_USE_LINUX_COSMIC_HELPER", "/tmp/deleted-cosmic-helper");
+		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER", "1");
+		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD", "1");
+		vi.stubEnv("COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER", "1");
+		vi.resetModules();
+		const { createComputerUseLinuxExtension } = await import(
+			"../extension/index.ts"
+		);
+		const harness = createPi();
+		createComputerUseLinuxExtension({
+			loadClientModule: () => ({
+				ComputerUseMcpClient: FakeMcpClient as never,
+			}),
+		})(harness.pi);
+
+		const doctor = harness.tools.get("computer_use_linux_doctor")!;
+		await doctor.execute("doctor", {}, undefined, undefined, {} as never);
+
+		expect(FakeMcpClient.instances[0]?.options.env).toMatchObject({
+			YDOTOOL_SOCKET: "/run/user/1000/ydotool.sock",
+			COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT: "1",
+			CU_DISABLE_ABS_POINTER: "1",
+		});
+		expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(
+			"COMPUTER_USE_LINUX_COSMIC_HELPER",
+		);
+		for (const key of [
+			"COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD",
+			"COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER",
+			"COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD",
+			"COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD",
+			"COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER",
+		]) {
+			expect(FakeMcpClient.instances[0]?.options.env).not.toHaveProperty(key);
+		}
+	});
+
 	it("fails clearly when the binary is unavailable", async () => {
 		const harness = createPi();
 		createComputerUseLinuxExtension({
@@ -442,4 +486,3 @@ describe("findExecutableOnPath", () => {
 		expect(findExecutableOnPath(undefined, "computer-use-linux")).toBeNull();
 	});
 });
-

@@ -45,7 +45,7 @@ def main():
     if not os.environ.get('CUL_CLICK_PRIVATE_BUS'):
         with tempfile.TemporaryDirectory(prefix='cul-click-test-', dir='/tmp') as tmp:
             env = os.environ.copy()
-            env.update(CUL_CLICK_PRIVATE_BUS='1', XDG_CONFIG_HOME=tmp+'/config', XDG_RUNTIME_DIR=tmp+'/runtime', GIO_USE_VFS='local', GVFS_DISABLE_FUSE='1', CU_DISABLE_ABS_POINTER='1', COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER='1', YDOTOOL_SOCKET=tmp+'/no-pointer.sock', XDG_SESSION_TYPE='x11', XDG_CURRENT_DESKTOP='Openbox')
+            env.update(CUL_CLICK_PRIVATE_BUS='1', XDG_CONFIG_HOME=tmp+'/config', XDG_RUNTIME_DIR=tmp+'/runtime', GIO_USE_VFS='local', GVFS_DISABLE_FUSE='1', CU_DISABLE_ABS_POINTER='1', YDOTOOL_SOCKET=tmp+'/no-pointer.sock', XDG_SESSION_TYPE='x11', XDG_CURRENT_DESKTOP='Openbox')
             for key in ('AT_SPI_BUS_ADDRESS', 'WAYLAND_DISPLAY', 'GSETTINGS_BACKEND'):
                 env.pop(key, None)
             for folder in ('config', 'runtime'):

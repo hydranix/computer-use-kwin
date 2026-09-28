@@ -217,13 +217,7 @@ function runtimeEnvironment(): Record<string, string> {
 		"NIX_LD",
 		"NIX_LD_LIBRARY_PATH",
 		"RUST_LOG",
-		"COMPUTER_USE_LINUX_COSMIC_HELPER",
 		"COMPUTER_USE_LINUX_ENABLE_SHELL",
-		"COMPUTER_USE_LINUX_FORCE_PORTAL_KEYBOARD",
-		"COMPUTER_USE_LINUX_FORCE_PORTAL_POINTER",
-		"COMPUTER_USE_LINUX_FORCE_XDOTOOL_KEYBOARD",
-		"COMPUTER_USE_LINUX_FORCE_YDOTOOL_KEYBOARD",
-		"COMPUTER_USE_LINUX_FORCE_YDOTOOL_POINTER",
 		"COMPUTER_USE_LINUX_PORTAL_SCROLL_INVERT",
 		"CU_DISABLE_ABS_POINTER",
 	]);
@@ -252,17 +246,6 @@ function defaultFindBinary(): BinaryLaunch | null {
 		`computer-use-linux-${process.platform}-${process.arch}`,
 	);
 	if (executable(bundledBinary)) {
-		const cosmicHelper = join(
-			__dirname,
-			"..",
-			"..",
-			"npm",
-			"bin",
-			"computer-use-linux-cosmic",
-		);
-		if (!env.COMPUTER_USE_LINUX_COSMIC_HELPER && executable(cosmicHelper)) {
-			env.COMPUTER_USE_LINUX_COSMIC_HELPER = cosmicHelper;
-		}
 		return { binaryPath: bundledBinary, env };
 	}
 
