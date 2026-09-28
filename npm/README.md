@@ -36,6 +36,12 @@ best effort and does not provide exclusive desktop ownership. It is available
 only to directly spawned MCP hosts; the native Pi extension does not forward
 the flag or include the tool in its catalog.
 
+On Wayland, set `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` in the server
+environment to ask a version 2 or newer RemoteDesktop portal to reuse its
+single-use restore tokens across processes. The first dialog still appears;
+leave the variable unset to request access for each new process. The repository
+README records where the tokens are stored and who can read them.
+
 The generated Hermes config should look like this:
 
 ```yaml

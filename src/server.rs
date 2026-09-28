@@ -1290,21 +1290,11 @@ impl ComputerUseLinux {
                 Err(_) => {}
             }
         }
-        let (dx, dy) = match params.direction.to_ascii_lowercase().as_str() {
-            "up" => (0, units),
-            "down" => (0, -units),
-            "left" => (units, 0),
-            "right" => (-units, 0),
-            _ => {
-                return Json(ActionOutput {
-                    ok: false,
-                    implemented: true,
-                    action: "scroll".to_string(),
-                    message: "Unsupported scroll direction; expected up, down, left, or right."
-                        .to_string(),
-                    received,
-                });
-            }
+        let (dx, dy) = match direction {
+            ScrollDirection::Up => (0, units),
+            ScrollDirection::Down => (0, -units),
+            ScrollDirection::Left => (units, 0),
+            ScrollDirection::Right => (-units, 0),
         };
         let mut sequence = Vec::new();
         if let Some((x, y)) = target_point {
@@ -2740,6 +2730,12 @@ impl ComputerUseLinux {
         session_is_wayland(session_type.as_deref(), wayland_display.as_deref())
     }
 
+    // The Wayland remote-desktop portal is a fallback for input: when a
+    // compatible ydotool CLI and working `ydotoold` socket are present we
+    // prefer ydotool, because it injects input without a permission prompt.
+    // Without `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` the portal asks
+    // again on every new process. That opt-in sends `persist_mode=2` on
+    // RemoteDesktop SelectDevices and reuses the single-use restore token.
     async fn should_prefer_portal_pointer_backend(&self) -> bool {
         should_prefer_portal_backend_by_default(
             self.is_wayland_session(),

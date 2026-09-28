@@ -141,6 +141,8 @@ computer-use-linux windows
 | --- | --- | --- |
 | KDE Plasma 6 on Wayland | KWin scripting | Sole supported target and window-management backend; screenshots and RemoteDesktop input use XDG portals, with ydotool and direct uinput pointer fallback. Shared AT-SPI provides application state. |
 
+If you run on a desktop not covered above, or a covered backend does not come up cleanly, please open an issue with the output of `computer-use-linux doctor` so we can extend the matrix honestly.
+
 ## Install
 
 ### Option A — `./install.sh` from a clone
@@ -382,6 +384,7 @@ These optional environment variables configure the server or npm wrapper.
 | --- | --- |
 | `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE` | Set exactly to `1` to expose the optional `complete_interaction` notification tool. Requires `notify-send` and a desktop notification service; disabled by default. |
 | `CU_DISABLE_ABS_POINTER` | Disable the uinput absolute pointer and click through `ydotool` instead for setups where the abs-pointer device misbehaves. |
+| `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP` | Set exactly to `1` to ask a version 2 or newer RemoteDesktop portal to remember pointer and keyboard grants across processes. The first dialog still appears. Later processes reuse separate single-use restore tokens stored with mode `0600` under `$XDG_STATE_HOME/computer-use-linux/` (or `~/.local/state/computer-use-linux/`). Unset, every new process is prompted. No effect when input is not using the portal. |
 | `COMPUTER_USE_LINUX_ENABLE_SHELL` | Set exactly to `1` before starting the MCP server to register the destructive `run_shell` tool. Unset by default. Do not enable for untrusted or unattended MCP hosts. |
 
 **npm wrapper** (set during `npm install`, or before running):
@@ -409,6 +412,7 @@ Computer-use tooling is, by definition, a privilege-escalation surface. The thre
 - **`ydotoold` runs as a per-user service** with read/write access to `/dev/uinput`. `install.sh` automates this for systemd user sessions and prints manual supervisor guidance elsewhere. Any process that can connect to its socket (`/run/user/$UID/.ydotool_socket`, mode `0600` by default) can synthesize arbitrary input — keypresses, clicks, anything. Keep the socket in the user runtime dir (the default), not in `/tmp` or any world-readable location. Do not run `ydotoold` as root or as a system service.
 - **Desktop portals request permission.** Granting screenshot or RemoteDesktop access lets the MCP host capture or control the desktop for the permitted session. If you don't want screenshot access, decline the prompt and use `get_app_state` with `include_screenshot: false`.
 - **AT-SPI exposes window contents to clients on your session bus.** It is also used by screen readers and shares the same trust boundary. Install and configure the system-level GTK/AT-SPI prerequisites required by your applications.
+- **Persisted remote control is opt-in.** `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` stores separate portal restore tokens for pointer and keyboard in the user state directory with mode `0600`. A same-user process that can read those files can restore control without a new prompt until the desktop revokes the grant. Leave the variable unset to keep a prompt on every new process.
 - **No network.** This binary opens no TCP/UDP listener, makes no outbound Internet connections, and ships no telemetry. It does use local session transports such as DBus and the per-user `ydotoold` Unix socket.
 - **Mutating tools are explicit.** The MCP tool list annotates read-only versus mutating tools, and CI fails if the published tool annotations drift from the table above. Treat those annotations as hints; the host is still responsible for user approval and policy.
 

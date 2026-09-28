@@ -137,6 +137,7 @@ event to report `hit: true`.
   its socket under `/run/user/$UID`, not as a system-wide service.
 - The optional ydotool backend requires version 1.0.3 or newer; `doctor`
   rejects older or semantically incompatible CLIs even when `ydotoold` runs.
+- On Wayland, `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` opts into reusing portal restore tokens across processes. The first permission dialog still appears; unset is the default and prompts for each new process. Tokens are stored in the user state directory with mode `0600`.
 
 ## Verification
 
