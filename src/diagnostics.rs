@@ -14,9 +14,6 @@ use std::{
 const DESKTOP_ENV_KEYS: &[&str] = &[
     "DBUS_SESSION_BUS_ADDRESS",
     "DESKTOP_SESSION",
-    "DISPLAY",
-    "HYPRLAND_INSTANCE_SIGNATURE",
-    "XAUTHORITY",
     "YDOTOOL_SOCKET",
     "XDG_SESSION_DESKTOP",
     "WAYLAND_DISPLAY",
@@ -95,11 +92,8 @@ pub struct PlatformReport {
     pub xdg_session_type: Option<String>,
     pub xdg_current_desktop: Option<String>,
     pub wayland_display: Option<String>,
-    pub display: Option<String>,
-    pub xauthority: Option<String>,
     pub dbus_session_bus_address: Option<String>,
     pub xdg_runtime_dir: Option<String>,
-    pub gnome_shell_version: Check,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -109,14 +103,11 @@ pub struct PortalReport {
     pub screencast: Check,
     pub screenshot: Check,
     pub input_capture: Check,
-    pub mutter_remote_desktop: Check,
-    pub mutter_screencast: Check,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AccessibilityReport {
     pub at_spi_bus: Check,
-    pub toolkit_accessibility: Check,
     pub at_spi_enabled: Check,
     pub screen_reader_enabled: Check,
 }
@@ -152,16 +143,6 @@ pub struct ReadinessReport {
     pub can_capture_screenshots: bool,
     pub recommended_next_step: String,
     pub blockers: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct SetupReport {
-    pub before: DoctorReport,
-    pub accessibility_command: Check,
-    pub after: DoctorReport,
-    pub changed_accessibility: bool,
-    pub requires_target_app_restart: bool,
-    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -283,13 +264,7 @@ fn capability_map_with_portal_keyboard(
         accessibility_backends.push("at_spi".to_string());
     }
 
-    // Isolation contexts: the live shared session is always available; a headless
-    // GNOME session is possible when gnome-shell is installed (it supports
-    // --headless --virtual-monitor), giving the agent its own seat.
-    let mut isolation = vec!["shared".to_string()];
-    if platform.gnome_shell_version.ok {
-        isolation.push("headless_gnome".to_string());
-    }
+    let isolation = vec!["shared".to_string()];
 
     let preferred = PreferredBackends {
         input: input_backends.first().cloned(),
@@ -391,26 +366,12 @@ fn desktop_env_hydration_updates(
     current_env: &HashMap<String, String>,
     source_env: &HashMap<String, String>,
 ) -> Vec<(&'static str, String)> {
-    // A nested X11 desktop can share a user manager with a Wayland host.
-    // Preserve its complete process-local session instead of grafting the
-    // host's WAYLAND_DISPLAY onto it.
-    let preserve_native_x11 = current_env
-        .get("XDG_SESSION_TYPE")
-        .is_some_and(|value| value.trim().eq_ignore_ascii_case("x11"))
-        && current_env
-            .get("DISPLAY")
-            .is_some_and(|value| !value.trim().is_empty())
-        && current_env
-            .get("WAYLAND_DISPLAY")
-            .is_none_or(|value| value.trim().is_empty());
-
     DESKTOP_ENV_KEYS
         .iter()
         .filter_map(|key| {
             if current_env
                 .get(*key)
                 .is_some_and(|value| !value.trim().is_empty())
-                || preserve_native_x11 && *key == "WAYLAND_DISPLAY"
             {
                 return None;
             }
@@ -443,8 +404,7 @@ fn desktop_process_environments() -> Vec<HashMap<String, String>> {
     }
 
     if !visited_pids.contains(&1) && process_owner_matches_current_user(1) {
-        if let Some(process_env) = read_process_environ(1).filter(process_env_has_graphical_display)
-        {
+        if let Some(process_env) = read_process_environ(1).filter(process_env_has_wayland_display) {
             environments.push(process_env);
         }
     }
@@ -478,10 +438,9 @@ fn process_owner_matches_current_user(pid: u32) -> bool {
         .is_some_and(|metadata| metadata.uid() == current_uid)
 }
 
-fn process_env_has_graphical_display(process_env: &HashMap<String, String>) -> bool {
+fn process_env_has_wayland_display(process_env: &HashMap<String, String>) -> bool {
     process_env
-        .get("DISPLAY")
-        .or_else(|| process_env.get("WAYLAND_DISPLAY"))
+        .get("WAYLAND_DISPLAY")
         .is_some_and(|value| !value.trim().is_empty())
 }
 
@@ -519,111 +478,6 @@ fn parse_line_environment(bytes: &[u8]) -> HashMap<String, String> {
         .collect()
 }
 
-pub fn setup_accessibility_report() -> SetupReport {
-    hydrate_session_bus_env();
-
-    let before = doctor_report();
-    let accessibility_command =
-        enable_accessibility(&before.accessibility, command_check_with_session_bus);
-    let after = doctor_report();
-    let before_ready = before.readiness.can_build_accessibility_tree;
-    let after_ready = after.readiness.can_build_accessibility_tree;
-    let saved_before = check_detail_contains_true(&before.accessibility.toolkit_accessibility);
-    let saved_after = check_detail_contains_true(&after.accessibility.toolkit_accessibility);
-    let changed_accessibility = after_ready && saved_after && (!before_ready || !saved_before);
-    let requires_target_app_restart = changed_accessibility;
-    let message = if after_ready && !saved_after {
-        "AT-SPI is available at runtime, but toolkit-accessibility could not be verified as enabled in GSettings. Newly launched apps may have no accessibility tree. Check accessibility_command and the saved setting; other accessibility tools can change it."
-    } else if after_ready {
-        if changed_accessibility {
-            "AT-SPI accessibility is enabled. Restart already-running target apps if their AT-SPI tree is still empty."
-        } else {
-            "AT-SPI accessibility is ready."
-        }
-    } else {
-        "Could not enable AT-SPI accessibility automatically. Check the accessibility_command detail and enable org.a11y.Status IsEnabled or org.gnome.desktop.interface toolkit-accessibility manually."
-    }
-    .to_string();
-
-    SetupReport {
-        before,
-        accessibility_command,
-        after,
-        changed_accessibility,
-        requires_target_app_restart,
-        message,
-    }
-}
-
-// Runtime IsEnabled does not establish the setting read by newly launched
-// GTK apps. Always check the saved key, even when an existing tree is usable.
-fn enable_accessibility(
-    before: &AccessibilityReport,
-    mut run: impl FnMut(&str, &[&str]) -> Check,
-) -> Check {
-    let setting = if check_detail_contains_true(&before.toolkit_accessibility) {
-        before.toolkit_accessibility.clone()
-    } else {
-        let write = run(
-            "gsettings",
-            &[
-                "set",
-                "org.gnome.desktop.interface",
-                "toolkit-accessibility",
-                "true",
-            ],
-        );
-        let read = run(
-            "gsettings",
-            &[
-                "get",
-                "org.gnome.desktop.interface",
-                "toolkit-accessibility",
-            ],
-        );
-        if !check_detail_contains_true(&read) {
-            let runtime = run(
-                "busctl",
-                &[
-                    "--user",
-                    "set-property",
-                    "org.a11y.Bus",
-                    "/org/a11y/bus",
-                    "org.a11y.Status",
-                    "IsEnabled",
-                    "b",
-                    "true",
-                ],
-            );
-            return Check::fail(format!(
-                "Saved toolkit-accessibility was not verified: {}; write: {}; runtime fallback: {}",
-                read.detail, write.detail, runtime.detail
-            ));
-        }
-        read
-    };
-    if !can_build_accessibility_tree(before) {
-        let runtime = run(
-            "busctl",
-            &[
-                "--user",
-                "set-property",
-                "org.a11y.Bus",
-                "/org/a11y/bus",
-                "org.a11y.Status",
-                "IsEnabled",
-                "b",
-                "true",
-            ],
-        );
-        return Check::ok(format!(
-            "Saved toolkit-accessibility verified: {}; runtime request: {}",
-            setting.detail, runtime.detail
-        ));
-    }
-    Check::ok("Saved toolkit-accessibility is enabled; runtime AT-SPI is available")
-}
-
 fn platform_report() -> PlatformReport {
     PlatformReport {
         os: std::env::consts::OS.to_string(),
@@ -632,11 +486,8 @@ fn platform_report() -> PlatformReport {
         xdg_session_type: env_var("XDG_SESSION_TYPE"),
         xdg_current_desktop: env_var("XDG_CURRENT_DESKTOP"),
         wayland_display: env_var("WAYLAND_DISPLAY"),
-        display: env_var("DISPLAY"),
-        xauthority: env_var("XAUTHORITY"),
         dbus_session_bus_address: dbus_session_address(),
         xdg_runtime_dir: xdg_runtime_dir().map(|path| path.display().to_string()),
-        gnome_shell_version: command_check("gnome-shell", &["--version"]),
     }
 }
 
@@ -655,8 +506,6 @@ fn portal_report() -> (PortalReport, Check) {
                 "org.freedesktop.portal.InputCapture",
                 INPUT_CAPTURE_PORTAL_METHODS,
             ),
-            mutter_remote_desktop: bus_name_check("org.gnome.Mutter.RemoteDesktop"),
-            mutter_screencast: bus_name_check("org.gnome.Mutter.ScreenCast"),
         },
         remote_desktop_keyboard,
     )
@@ -665,14 +514,6 @@ fn portal_report() -> (PortalReport, Check) {
 fn accessibility_report() -> AccessibilityReport {
     AccessibilityReport {
         at_spi_bus: atspi_bus_address_check(),
-        toolkit_accessibility: command_check_with_session_bus(
-            "gsettings",
-            &[
-                "get",
-                "org.gnome.desktop.interface",
-                "toolkit-accessibility",
-            ],
-        ),
         at_spi_enabled: atspi_status_property_check("IsEnabled"),
         screen_reader_enabled: atspi_status_property_check("ScreenReaderEnabled"),
     }
@@ -773,7 +614,7 @@ fn readiness_report_with_portal_keyboard(
 
     if !can_build_accessibility_tree {
         blockers.push(
-            "AT-SPI accessibility is disabled; enable org.a11y.Status IsEnabled or org.gnome.desktop.interface toolkit-accessibility for tree extraction."
+            "The AT-SPI bus or IsEnabled status is unavailable; enable session accessibility support for tree extraction."
                 .to_string(),
         );
     }
@@ -807,7 +648,7 @@ fn readiness_report_with_portal_keyboard(
     }
 
     let recommended_next_step = if !can_build_accessibility_tree {
-        "Run setup_accessibility to enable AT-SPI accessibility before element-aware actions."
+        "Enable session AT-SPI accessibility and confirm org.a11y.Status.IsEnabled before element-aware actions."
             .to_string()
     } else if !can_query_windows {
         format!(
@@ -865,9 +706,7 @@ fn portal_keyboard_input_available(
 }
 
 fn can_build_accessibility_tree(accessibility: &AccessibilityReport) -> bool {
-    accessibility.at_spi_bus.ok
-        && (check_detail_contains_true(&accessibility.at_spi_enabled)
-            || check_detail_contains_true(&accessibility.toolkit_accessibility))
+    accessibility.at_spi_bus.ok && check_detail_contains_true(&accessibility.at_spi_enabled)
 }
 
 fn check_detail_contains_true(check: &Check) -> bool {
@@ -1325,68 +1164,16 @@ fn run_command(command: &str, args: &[&str], with_session_bus: bool) -> Check {
 mod tests {
     use super::*;
 
-    #[test]
-    fn setup_repairs_saved_key_even_when_runtime_is_ready() {
-        let mut before = accessibility_report(Check::ok("bus"), Check::ok("false"));
-        before.at_spi_enabled = Check::ok("b true");
-        let mut calls = Vec::new();
-        let result = enable_accessibility(&before, |program, args| {
-            calls.push((program.to_string(), args.join(" ")));
-            Check::ok(if args[0] == "get" { "true" } else { "" })
-        });
-        assert!(result.ok);
-        assert_eq!(
-            calls,
-            vec![
-                (
-                    "gsettings".into(),
-                    "set org.gnome.desktop.interface toolkit-accessibility true".into()
-                ),
-                (
-                    "gsettings".into(),
-                    "get org.gnome.desktop.interface toolkit-accessibility".into()
-                ),
-            ]
-        );
-    }
-
-    #[test]
-    fn setup_does_not_claim_saved_success_from_command_exit_status() {
-        let before = accessibility_report(Check::ok("bus"), Check::ok("false"));
-        let mut calls = Vec::new();
-        let result = enable_accessibility(&before, |program, args| {
-            calls.push(program.to_string());
-            Check::ok(if args[0] == "get" {
-                "false"
-            } else {
-                "exit status 0"
-            })
-        });
-        assert!(!result.ok);
-        assert!(result.detail.contains("not verified"));
-        assert_eq!(calls, ["gsettings", "gsettings", "busctl"]);
-    }
-
-    #[test]
-    fn setup_preserves_enabled_settings_without_writing() {
-        let before = accessibility_report(Check::ok("bus"), Check::ok("true"));
-        let result = enable_accessibility(&before, |_, _| panic!("already enabled"));
-        assert!(result.ok);
-    }
-
     fn platform_report() -> PlatformReport {
         PlatformReport {
             os: "linux".to_string(),
             arch: "x86_64".to_string(),
             desktop_session: None,
             xdg_session_type: Some("wayland".to_string()),
-            xdg_current_desktop: Some("GNOME".to_string()),
+            xdg_current_desktop: Some("KDE".to_string()),
             wayland_display: Some("wayland-0".to_string()),
-            display: Some(":0".to_string()),
-            xauthority: Some("/run/user/1000/Xauthority".to_string()),
             dbus_session_bus_address: Some("unix:path=/run/user/1000/bus".to_string()),
             xdg_runtime_dir: Some("/run/user/1000".to_string()),
-            gnome_shell_version: Check::ok("GNOME Shell 46.0"),
         }
     }
 
@@ -1397,19 +1184,13 @@ mod tests {
             screencast: Check::fail("missing"),
             screenshot: Check::ok(".Screenshot method sa{sv} o -"),
             input_capture: Check::fail("missing"),
-            mutter_remote_desktop: Check::fail("missing"),
-            mutter_screencast: Check::fail("missing"),
         }
     }
 
-    fn accessibility_report(
-        at_spi_bus: Check,
-        toolkit_accessibility: Check,
-    ) -> AccessibilityReport {
+    fn accessibility_report(at_spi_bus: Check, at_spi_enabled: Check) -> AccessibilityReport {
         AccessibilityReport {
             at_spi_bus,
-            toolkit_accessibility,
-            at_spi_enabled: Check::fail("(<false>,)"),
+            at_spi_enabled,
             screen_reader_enabled: Check::fail("(<false>,)"),
         }
     }
@@ -1511,6 +1292,72 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_expose_only_supported_wayland_paths() {
+        let platform = platform_report();
+        let portals = portal_report(Check::fail("missing"));
+        let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
+        let mut windowing = windowing_report(true, true);
+        windowing.kwin = Check::ok("KWin scripting is available");
+        windowing.backends =
+            [("kwin".to_string(), Check::ok("KWin scripting is available"))].into();
+        let input = input_report(true);
+        let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
+        let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
+        let diagnostics = serde_json::json!({
+            "platform": platform,
+            "portals": portals,
+            "accessibility": accessibility,
+            "windowing": windowing,
+            "input": input,
+            "readiness": readiness,
+            "capabilities": capabilities,
+        });
+
+        for (section, forbidden_fields) in [
+            (
+                "platform",
+                &["display", "xauthority", "gnome_shell_version"][..],
+            ),
+            (
+                "portals",
+                &["mutter_remote_desktop", "mutter_screencast"][..],
+            ),
+            ("accessibility", &["toolkit_accessibility"][..]),
+        ] {
+            for field in forbidden_fields {
+                assert!(
+                    diagnostics[section].get(field).is_none(),
+                    "diagnostics unexpectedly expose {section}.{field}"
+                );
+            }
+        }
+
+        assert_eq!(diagnostics["platform"]["wayland_display"], "wayland-0");
+        assert!(diagnostics["accessibility"]["at_spi_enabled"].is_object());
+        assert!(diagnostics["portals"]["screenshot"].is_object());
+        assert_eq!(
+            diagnostics["windowing"]["backends"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["kwin"]
+        );
+        assert_eq!(
+            diagnostics["capabilities"]["isolation"],
+            serde_json::json!(["shared"])
+        );
+        assert!(!diagnostics["readiness"]["recommended_next_step"]
+            .as_str()
+            .unwrap()
+            .contains("setup_accessibility"));
+        assert!(!diagnostics["readiness"]["blockers"]
+            .to_string()
+            .contains("gsettings"));
+    }
+
+    #[test]
     fn accessibility_tree_requires_reachable_at_spi_bus() {
         let report = accessibility_report(Check::fail("permission denied"), Check::ok("true"));
 
@@ -1518,7 +1365,7 @@ mod tests {
     }
 
     #[test]
-    fn accessibility_tree_is_ready_when_bus_and_toolkit_are_ready() {
+    fn accessibility_tree_is_ready_when_bus_and_status_are_ready() {
         let report = accessibility_report(
             Check::ok("('unix:path=/run/user/1000/at-spi/bus',)"),
             Check::ok("true"),
@@ -1557,10 +1404,9 @@ mod tests {
     #[test]
     fn parses_nul_separated_process_environment() {
         let environment = parse_environ(
-            b"DISPLAY=:0\0WAYLAND_DISPLAY=wayland-0\0EMPTY=\0NO_EQUALS\0XDG_SESSION_TYPE=wayland\0",
+            b"WAYLAND_DISPLAY=wayland-0\0EMPTY=\0NO_EQUALS\0XDG_SESSION_TYPE=wayland\0",
         );
 
-        assert_eq!(environment.get("DISPLAY").map(String::as_str), Some(":0"));
         assert_eq!(
             environment.get("WAYLAND_DISPLAY").map(String::as_str),
             Some("wayland-0")
@@ -1570,22 +1416,20 @@ mod tests {
     }
 
     #[test]
-    fn desktop_env_hydration_includes_xauthority() {
-        assert!(DESKTOP_ENV_KEYS.contains(&"XAUTHORITY"));
+    fn desktop_env_hydration_includes_wayland_session_facts() {
+        assert!(DESKTOP_ENV_KEYS.contains(&"WAYLAND_DISPLAY"));
+        assert!(DESKTOP_ENV_KEYS.contains(&"XDG_SESSION_TYPE"));
     }
 
     #[test]
-    fn desktop_env_hydration_preserves_explicit_native_x11() {
+    fn desktop_env_hydration_preserves_explicit_wayland_session() {
         let current_env = HashMap::from([
-            ("DISPLAY".to_string(), ":90".to_string()),
-            ("XDG_SESSION_TYPE".to_string(), "x11".to_string()),
+            ("WAYLAND_DISPLAY".to_string(), "wayland-1".to_string()),
+            ("XDG_SESSION_TYPE".to_string(), "wayland".to_string()),
         ]);
         let host_env = HashMap::from([
-            ("WAYLAND_DISPLAY".to_string(), "wayland-0".to_string()),
-            (
-                "XDG_CURRENT_DESKTOP".to_string(),
-                "ubuntu:GNOME".to_string(),
-            ),
+            ("WAYLAND_DISPLAY".to_string(), "wayland-host".to_string()),
+            ("XDG_CURRENT_DESKTOP".to_string(), "KDE".to_string()),
         ]);
 
         let updates = desktop_env_hydration_updates(&current_env, &host_env);
@@ -1593,7 +1437,7 @@ mod tests {
         assert!(!updates.iter().any(|(key, _)| *key == "WAYLAND_DISPLAY"));
         assert!(updates
             .iter()
-            .any(|(key, value)| { *key == "XDG_CURRENT_DESKTOP" && value == "ubuntu:GNOME" }));
+            .any(|(key, value)| { *key == "XDG_CURRENT_DESKTOP" && value == "KDE" }));
     }
 
     #[test]
@@ -1609,62 +1453,20 @@ mod tests {
     }
 
     #[test]
-    fn graphical_process_env_requires_display() {
-        let with_display = HashMap::from([("DISPLAY".to_string(), ":0".to_string())]);
+    fn process_env_requires_wayland_display() {
         let with_wayland =
             HashMap::from([("WAYLAND_DISPLAY".to_string(), "wayland-0".to_string())]);
-        let without_display = HashMap::from([("XAUTHORITY".to_string(), "/tmp/xauth".to_string())]);
+        let without_wayland = HashMap::from([("WAYLAND_DISPLAY".to_string(), "".to_string())]);
 
-        assert!(process_env_has_graphical_display(&with_display));
-        assert!(process_env_has_graphical_display(&with_wayland));
-        assert!(!process_env_has_graphical_display(&without_display));
-    }
-
-    #[test]
-    fn capabilities_use_ydotool_instead_of_xdotool_on_x11() {
-        let mut platform = platform_report();
-        platform.xdg_session_type = Some("x11".to_string());
-        platform.wayland_display = None;
-        platform.display = Some(":0".to_string());
-        let mut input = input_report(true);
-        input.uinput = Check::fail("missing");
-
-        let capabilities = capability_map(
-            &platform,
-            &portal_report(Check::fail("missing")),
-            &accessibility_report(Check::fail("missing"), Check::fail("missing")),
-            &windowing_report(false, false),
-            &input,
-        );
-
-        assert_eq!(capabilities.input, ["ydotool"]);
-        assert_eq!(capabilities.preferred.input.as_deref(), Some("ydotool"));
-    }
-
-    #[test]
-    fn x11_diagnostics_ignore_portal_and_xdotool() {
-        let mut platform = platform_report();
-        platform.xdg_session_type = Some("x11".to_string());
-        platform.wayland_display = None;
-        platform.display = Some(":0".to_string());
-        let portals = portal_report(Check::ok("org.freedesktop.portal.RemoteDesktop"));
-        let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
-        let windowing = windowing_report(true, true);
-        let input = input_report(false);
-
-        let capabilities = capability_map(&platform, &portals, &accessibility, &windowing, &input);
-        let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
-
-        assert!(capabilities.input.is_empty());
-        assert_eq!(capabilities.preferred.input, None);
-        assert!(!readiness.can_send_development_input);
+        assert!(process_env_has_wayland_display(&with_wayland));
+        assert!(!process_env_has_wayland_display(&without_wayland));
     }
 
     #[test]
     fn wayland_diagnostics_need_portal_or_ydotool_input() {
         let mut platform = platform_report();
         platform.xdg_session_type = Some("wayland".to_string());
-        platform.xdg_current_desktop = Some("Hyprland".to_string());
+        platform.xdg_current_desktop = Some("KDE".to_string());
         platform.wayland_display = Some("wayland-0".to_string());
         let portals = portal_report(Check::fail("missing"));
         let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
@@ -1924,9 +1726,8 @@ mod tests {
     #[test]
     fn capabilities_advertise_ydotool_without_display() {
         let mut platform = platform_report();
-        platform.xdg_session_type = Some("x11".to_string());
+        platform.xdg_session_type = Some("wayland".to_string());
         platform.wayland_display = None;
-        platform.display = None;
         let mut input = input_report(true);
         input.uinput = Check::fail("missing");
 
@@ -1961,15 +1762,12 @@ mod tests {
     #[test]
     fn parses_systemd_show_environment_output() {
         let environment = parse_line_environment(
-            b"DISPLAY=:0\nHYPRLAND_INSTANCE_SIGNATURE=abc\nNO_EQUALS\nYDOTOOL_SOCKET=/run/ydotoold/socket\n",
+            b"WAYLAND_DISPLAY=wayland-0\nNO_EQUALS\nYDOTOOL_SOCKET=/run/ydotoold/socket\n",
         );
 
-        assert_eq!(environment.get("DISPLAY").map(String::as_str), Some(":0"));
         assert_eq!(
-            environment
-                .get("HYPRLAND_INSTANCE_SIGNATURE")
-                .map(String::as_str),
-            Some("abc")
+            environment.get("WAYLAND_DISPLAY").map(String::as_str),
+            Some("wayland-0")
         );
         assert_eq!(
             environment.get("YDOTOOL_SOCKET").map(String::as_str),

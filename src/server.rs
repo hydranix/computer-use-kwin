@@ -4,7 +4,7 @@ use crate::atspi_tree::{
     set_element_value, snapshot_accessibility_tree, AccessibilityAction, AccessibilityNode,
     AccessibleAppSummary, Bounds, FocusProbe, FocusedElementSummary, ValueSetInvocation,
 };
-use crate::diagnostics::{doctor_report, setup_accessibility_report, DoctorReport, SetupReport};
+use crate::diagnostics::{doctor_report, DoctorReport};
 use crate::remote_desktop::{
     click as portal_click, drag as portal_drag, keysyms_for_text, press_keycode_chord,
     scroll as portal_scroll, start_portal_keyboard_session, start_portal_pointer_session,
@@ -179,24 +179,6 @@ impl ComputerUseLinux {
             tokio::task::spawn_blocking(doctor_report)
                 .await
                 .expect("diagnostics task panicked"),
-        )
-    }
-
-    #[tool(
-        name = "setup_accessibility",
-        description = "Enable GNOME accessibility through gsettings so Linux Computer Use can read AT-SPI trees.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn setup_accessibility(&self) -> Json<SetupReport> {
-        Json(
-            tokio::task::spawn_blocking(setup_accessibility_report)
-                .await
-                .expect("accessibility setup task panicked"),
         )
     }
 
@@ -390,36 +372,38 @@ impl ComputerUseLinux {
         let mut tree_scoped = false;
         let mut tree_root_pid = None;
         let mut accessibility_tree_truncated = false;
-        let (accessibility_tree, accessibility_tree_raw_count, accessibility_error) =
-            if diagnostics.readiness.can_build_accessibility_tree {
-                let target_pid = window_context.as_ref().and_then(|window| window.pid);
-                match snapshot_accessibility_tree(
-                    app_filter.as_deref(),
-                    target_pid,
-                    max_nodes,
-                    max_depth,
-                )
-                .await
-                {
-                    Ok(snapshot) => {
-                        tree_scoped = snapshot.scoped;
-                        tree_root_pid = snapshot.root_pid;
-                        accessibility_tree_truncated = snapshot.truncated;
-                        let raw_count = snapshot.nodes.len();
-                        (compact_accessibility_tree(snapshot.nodes), raw_count, None)
-                    }
-                    Err(error) => (Vec::new(), 0, Some(format!("{error:#}"))),
+        let (accessibility_tree, accessibility_tree_raw_count, accessibility_error) = if diagnostics
+            .readiness
+            .can_build_accessibility_tree
+        {
+            let target_pid = window_context.as_ref().and_then(|window| window.pid);
+            match snapshot_accessibility_tree(
+                app_filter.as_deref(),
+                target_pid,
+                max_nodes,
+                max_depth,
+            )
+            .await
+            {
+                Ok(snapshot) => {
+                    tree_scoped = snapshot.scoped;
+                    tree_root_pid = snapshot.root_pid;
+                    accessibility_tree_truncated = snapshot.truncated;
+                    let raw_count = snapshot.nodes.len();
+                    (compact_accessibility_tree(snapshot.nodes), raw_count, None)
                 }
-            } else {
-                (
+                Err(error) => (Vec::new(), 0, Some(format!("{error:#}"))),
+            }
+        } else {
+            (
                     Vec::new(),
                     0,
                     Some(
-                        "GNOME accessibility is disabled; call setup_accessibility first."
+                        "Shared-session AT-SPI accessibility is unavailable; verify that the session accessibility service is enabled."
                             .to_string(),
                     ),
                 )
-            };
+        };
         if accessibility_error.is_none() {
             // Record a pid only when the tree's roots were matched by it. A pid
             // with no AT-SPI root falls back to every app, or to an app-name
@@ -1457,7 +1441,7 @@ impl ComputerUseLinux {
 
     #[tool(
         name = "press_key",
-        description = "Press a key or key-combination on the keyboard, optionally after focusing a target window or terminal selector. Key grammar (case-insensitive; hyphens/spaces ignored): combos join with '+', e.g. Ctrl+L or Ctrl+Shift+T. Modifiers: ctrl/control, alt/option, shift, meta/super/cmd/command. Named keys: enter/return, escape/esc, tab, backspace, delete/del, space, home, end, pageup, pagedown, arrowleft/left, arrowright/right, arrowup/up, arrowdown/down, f1-f12. Plus single US letters a-z and digits 0-9. Anything else returns an error (never silently dropped). On Wayland, chords are sent through an active remote desktop portal keyboard session when one is available (or when ydotool is absent), falling back to ydotool otherwise. Note: compositor-level shortcuts (e.g. Super+Up) may be consumed by GNOME before reaching the app.",
+        description = "Press a key or key-combination on the keyboard, optionally after focusing a target window or terminal selector. Key grammar (case-insensitive; hyphens/spaces ignored): combos join with '+', e.g. Ctrl+L or Ctrl+Shift+T. Modifiers: ctrl/control, alt/option, shift, meta/super/cmd/command. Named keys: enter/return, escape/esc, tab, backspace, delete/del, space, home, end, pageup, pagedown, arrowleft/left, arrowright/right, arrowup/up, arrowdown/down, f1-f12. Plus single US letters a-z and digits 0-9. Anything else returns an error (never silently dropped). On Wayland, chords are sent through an active remote desktop portal keyboard session when one is available (or when ydotool is absent), falling back to ydotool otherwise. Note: compositor-level shortcuts (e.g. Super+Up) may be consumed by the desktop before reaching the app.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -1749,7 +1733,7 @@ impl ComputerUseLinux {
     // can't be env!("CARGO_PKG_VERSION"); the MCP safety check (CI) fails the
     // build if it drifts from the Cargo version.
     version = "0.7.4",
-    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If diagnostics report disabled GNOME accessibility, call setup_accessibility before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. This KDE Plasma 6 Wayland backend uses KWin for window listing, focus, and targeting; if KWin window introspection is unavailable, ensure org.kde.KWin scripting is exposed on the session bus. The backend can capture size-bounded screenshots through XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus KWin windows when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use KWin move_window/resize_window to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Scope get_app_state with app_name_or_bundle_identifier or a window target (window_id, pid, app_id, wm_class, title); without one it returns the whole desktop AT-SPI tree, reports tree_scoped=false, and warns in message, which can flood context. accessibility_tree_truncated=true means the node, depth, or read budget stopped traversal with unread elements left; recover by scoping to a narrower app or window target and raising max_nodes or max_depth (hard caps 2000 and 64), not by lowering max_nodes. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
+    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If AT-SPI accessibility is unavailable, verify that the shared session accessibility service is enabled before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. This KDE Plasma 6 Wayland backend uses KWin for window listing, focus, and targeting; if KWin window introspection is unavailable, ensure org.kde.KWin scripting is exposed on the session bus. The backend can capture size-bounded screenshots through XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus KWin windows when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use KWin move_window/resize_window to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Scope get_app_state with app_name_or_bundle_identifier or a window target (window_id, pid, app_id, wm_class, title); without one it returns the whole desktop AT-SPI tree, reports tree_scoped=false, and warns in message, which can flood context. accessibility_tree_truncated=true means the node, depth, or read budget stopped traversal with unread elements left; recover by scoping to a narrower app or window target and raising max_nodes or max_depth (hard caps 2000 and 64), not by lowering max_nodes. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
 )]
 impl ServerHandler for ComputerUseLinux {}
 
@@ -5220,13 +5204,15 @@ mod tests {
     }
 
     #[test]
-    fn accessibility_setup_remains_exposed_without_gnome_window_setup() {
+    fn gnome_setup_tools_are_not_exposed() {
         let tools = ComputerUseLinux::default().mcp_tool_router().list_all();
 
-        assert!(tools.iter().any(|tool| tool.name == "setup_accessibility"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool.name == "setup_window_targeting"));
+        for removed_tool in ["setup_accessibility", "setup_window_targeting"] {
+            assert!(
+                !tools.iter().any(|tool| tool.name == removed_tool),
+                "MCP router unexpectedly exposes {removed_tool}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -1,5 +1,4 @@
 mod abs_pointer;
-mod accessibility_guard;
 #[path = "atspi_tree.rs"]
 mod atspi_tree_impl;
 mod cli;
@@ -34,7 +33,6 @@ pub mod diagnostics {
         DoctorReport, InputReport, PlatformReport, PortalReport, PreferredBackends,
         ReadinessReport, WindowingReport,
     };
-    pub(crate) use crate::diagnostics_impl::{setup_accessibility_report, SetupReport};
 }
 
 pub mod screenshot {

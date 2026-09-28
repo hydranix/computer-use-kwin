@@ -17,7 +17,6 @@ from typing import Any
 
 EXPECTED_TOOLS = {
     "doctor",
-    "setup_accessibility",
     "list_apps",
     "get_app_state",
     "list_windows",
@@ -34,6 +33,7 @@ EXPECTED_TOOLS = {
     "perform_action",
     "set_value",
 }
+REMOVED_TOOLS = {"setup_accessibility", "setup_window_targeting"}
 SHELL_TOOL = "run_shell"
 COMPLETION_TOOL = "complete_interaction"
 
@@ -107,7 +107,6 @@ DESTRUCTIVE_MUTATING_TOOLS = {
 NON_DESTRUCTIVE_MUTATING_TOOLS = EXPECTED_TOOLS - READ_ONLY_TOOLS - DESTRUCTIVE_MUTATING_TOOLS
 
 IDEMPOTENT_TOOLS = READ_ONLY_TOOLS | {
-    "setup_accessibility",
     "activate_window",
     "move_window",
     "resize_window",
@@ -115,7 +114,6 @@ IDEMPOTENT_TOOLS = READ_ONLY_TOOLS | {
 
 OPEN_WORLD_TOOLS = (EXPECTED_TOOLS | {SHELL_TOOL, COMPLETION_TOOL}) - {
     "doctor",
-    "setup_accessibility",
 }
 
 
@@ -256,6 +254,10 @@ def main() -> int:
             "tool annotation classes do not cover the expected MCP tool set: "
             f"missing={EXPECTED_TOOLS - annotation_partition}, extra={annotation_partition - EXPECTED_TOOLS}"
         )
+    if not {"move_window", "resize_window"} <= IDEMPOTENT_TOOLS:
+        raise AssertionError("window geometry tools must be annotated as idempotent")
+    if not {"move_window", "resize_window"} <= OPEN_WORLD_TOOLS:
+        raise AssertionError("window geometry tools must be annotated as open-world")
 
     client = McpClient(binary)
     try:
@@ -292,6 +294,9 @@ def main() -> int:
 
         tools = client.request("tools/list", {})["result"].get("tools") or []
         names = {tool.get("name") for tool in tools}
+        exposed_removed = names & REMOVED_TOOLS
+        if exposed_removed:
+            raise AssertionError(f"removed setup tools are still exposed: {sorted(exposed_removed)}")
         if names != EXPECTED_TOOLS:
             raise AssertionError(f"unexpected tools: missing={EXPECTED_TOOLS - names}, extra={names - EXPECTED_TOOLS}")
 
@@ -322,6 +327,43 @@ def main() -> int:
         for section in ["platform", "accessibility", "windowing", "input", "portals", "readiness"]:
             if section not in report:
                 raise AssertionError(f"doctor report missing {section!r}: {report.keys()}")
+        for section, forbidden_fields in {
+            "platform": {"display", "xauthority", "gnome_shell_version"},
+            "portals": {"mutter_remote_desktop", "mutter_screencast"},
+            "accessibility": {"toolkit_accessibility"},
+        }.items():
+            unexpected = report[section].keys() & forbidden_fields
+            if unexpected:
+                raise AssertionError(
+                    f"doctor report exposes unsupported {section} fields: {sorted(unexpected)}"
+                )
+        backends = report["windowing"].get("backends") or {}
+        if not set(backends) <= {"kwin"}:
+            raise AssertionError(f"doctor report exposes unsupported window backends: {sorted(backends)}")
+        capabilities = report.get("capabilities") or {}
+        supported_capabilities = {
+            "input": {"abs_pointer", "ydotool", "portal"},
+            "screenshot": {"portal"},
+            "window_control": {"kwin"},
+            "accessibility": {"at_spi"},
+            "isolation": {"shared"},
+        }
+        for layer, supported in supported_capabilities.items():
+            unexpected = set(capabilities.get(layer) or []) - supported
+            if unexpected:
+                raise AssertionError(
+                    f"doctor report exposes unsupported {layer} capabilities: {sorted(unexpected)}"
+                )
+        readiness_text = " ".join(
+            [report["readiness"].get("recommended_next_step", "")]
+            + report["readiness"].get("blockers", [])
+        )
+        if re.search(
+            r"\b(?:gnome(?: shell)?|gsettings|cosmic|hyprland|i3|x11|xdotool|wtype|setup_accessibility)\b",
+            readiness_text,
+            re.IGNORECASE,
+        ):
+            raise AssertionError(f"doctor report contains stale readiness guidance: {readiness_text}")
     finally:
         client.close()
 
