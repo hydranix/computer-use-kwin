@@ -103,7 +103,7 @@ jobs:
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
       - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - run: cargo build --locked
-      - run: scripts/mcp_safety_check.py --binary target/debug/computer-use-linux
+      - run: scripts/mcp_safety_check.py --binary target/debug/computer-use-kwin
 
   agent-config:
     name: agnix
@@ -132,14 +132,14 @@ jobs:
           npm_version="$(node -p "require('./package.json').version")"
           test "$cargo_version" = "$npm_version"
       - run: node --check npm/install.js
-      - run: node --check npm/bin/computer-use-linux.js
+      - run: node --check npm/bin/computer-use-kwin.js
       - run: cargo build --locked
       - name: Test npm wrapper against local binary
         run: |
           prefix="$RUNNER_TEMP/npm-prefix"
-          COMPUTER_USE_LINUX_LOCAL_BINARY="$PWD/target/debug/computer-use-linux" \
+          COMPUTER_USE_KWIN_LOCAL_BINARY="$PWD/target/debug/computer-use-kwin" \
             npm install --prefix "$prefix" -g .
-          "$prefix/bin/computer-use-linux" --help
+          "$prefix/bin/computer-use-kwin" --help
       - run: npm run pack:check
 
   zod-schema:
@@ -157,7 +157,7 @@ jobs:
       - name: Install MCP SDK for the zod check
         run: npm ci --prefix scripts/zod-check --ignore-scripts --no-audit --no-fund
       - name: Validate tools/list against the MCP SDK zod schema
-        run: node scripts/zod-check/check.mjs --command target/debug/computer-use-linux
+        run: node scripts/zod-check/check.mjs --command target/debug/computer-use-kwin
 
   pi-extension:
     name: native Pi extension
@@ -174,16 +174,16 @@ jobs:
       - run: npm ci --prefix pi --ignore-scripts --no-audit --no-fund
       - run: npm run build:check --prefix pi
       - run: npm run typecheck --prefix pi
-      - run: COMPUTER_USE_LINUX_TEST_BINARY="$PWD/target/debug/computer-use-linux" npm test --prefix pi
-      - run: python3 scripts/generate_pi_tool_catalog.py --binary target/debug/computer-use-linux --check
+      - run: COMPUTER_USE_LINUX_TEST_BINARY="$PWD/target/debug/computer-use-kwin" npm test --prefix pi
+      - run: python3 scripts/generate_pi_tool_catalog.py --binary target/debug/computer-use-kwin --check
       - name: Smoke the installed Pi package
         run: |
           prefix="$RUNNER_TEMP/pi-package"
           package="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
-          COMPUTER_USE_LINUX_LOCAL_BINARY="$PWD/target/debug/computer-use-linux" \
+          COMPUTER_USE_KWIN_LOCAL_BINARY="$PWD/target/debug/computer-use-kwin" \
             npm install --prefix "$prefix" "$RUNNER_TEMP/$package" --no-audit --no-fund
-          test -x "$prefix/node_modules/@agent-sh/computer-use-linux/npm/bin/computer-use-linux-linux-x64"
-          COMPUTER_USE_LINUX_EXTENSION_PATH="$prefix/node_modules/@agent-sh/computer-use-linux/pi/extension/index.ts" \
+          test -x "$prefix/node_modules/@hydranix/computer-use-kwin/npm/bin/computer-use-kwin-linux-x64"
+          COMPUTER_USE_LINUX_EXTENSION_PATH="$prefix/node_modules/@hydranix/computer-use-kwin/pi/extension/index.ts" \
           COMPUTER_USE_LINUX_USE_PACKAGED_BINARY=1 \
             npm test --prefix pi -- pi-integration.test.ts
 
@@ -211,9 +211,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            asset: computer-use-linux-x86_64-unknown-linux-gnu
+            asset: computer-use-kwin-x86_64-unknown-linux-gnu
           - target: aarch64-unknown-linux-gnu
-            asset: computer-use-linux-aarch64-unknown-linux-gnu
+            asset: computer-use-kwin-aarch64-unknown-linux-gnu
             cross: true
     steps:
       - uses: actions/checkout@v4
@@ -239,7 +239,7 @@ jobs:
       - name: Stage artifact
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/computer-use-linux dist/${{ matrix.asset }}
+          cp target/${{ matrix.target }}/release/computer-use-kwin dist/${{ matrix.asset }}
           (
             cd dist
             sha256sum ${{ matrix.asset }} > ${{ matrix.asset }}.sha256
@@ -293,10 +293,10 @@ jobs:
           name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
           test "v$version" = "$GITHUB_REF_NAME"
-          base="https://github.com/agent-sh/computer-use-linux/releases/download/v${version}"
+          base="https://github.com/hydranix/computer-use-kwin/releases/download/v${version}"
           for asset in \
-            computer-use-linux-x86_64-unknown-linux-gnu \
-            computer-use-linux-aarch64-unknown-linux-gnu
+            computer-use-kwin-x86_64-unknown-linux-gnu \
+            computer-use-kwin-aarch64-unknown-linux-gnu
           do
             for suffix in "" ".sha256"; do
               for attempt in {1..30}; do
@@ -337,7 +337,7 @@ jobs:
       - name: Install MCP SDK for the zod check
         run: npm ci --prefix scripts/zod-check --ignore-scripts --no-audit --no-fund
       - name: Validate the published tools/list against the MCP SDK zod schema
-        run: node scripts/zod-check/check.mjs --command "$RUNNER_TEMP/published/bin/computer-use-linux"
+        run: node scripts/zod-check/check.mjs --command "$RUNNER_TEMP/published/bin/computer-use-kwin"
 
   notify-codex-desktop:
     name: open codex-desktop update reminder
