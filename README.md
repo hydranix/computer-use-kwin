@@ -238,7 +238,7 @@ computer_use_kwin_tools({ query: "observe a window and click a control" })
 ```
 
 No separate MCP adapter or manual MCP configuration is required. Pi starts one
-computer-use-linux process lazily on the first real tool call, reuses it for the
+computer-use-kwin process lazily on the first real tool call, reuses it for the
 session so accessibility snapshots remain valid, serializes desktop actions,
 and closes it on reload, session switch, or exit. See the
 [Pi setup guide](skills/computer-use-kwin/references/pi-setup.md) for migration
