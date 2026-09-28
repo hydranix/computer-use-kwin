@@ -23,8 +23,8 @@ const KWIN_SCRIPT_TIMEOUT: Duration = Duration::from_secs(2);
 const KWIN_SCRIPTING_SERVICE: &str = "org.kde.KWin";
 const KWIN_SCRIPTING_OBJECT_PATH: &str = "/Scripting";
 const KWIN_SCRIPTING_INTERFACE: &str = "org.kde.kwin.Scripting";
-const KWIN_CALLBACK_OBJECT_PATH_PREFIX: &str = "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery";
-const KWIN_CALLBACK_INTERFACE: &str = "dev.avifenesh.ComputerUseLinux.KWinWindowQuery";
+const KWIN_CALLBACK_OBJECT_PATH_PREFIX: &str = "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery";
+const KWIN_CALLBACK_INTERFACE: &str = "dev.avifenesh.ComputerUseKwin.KWinWindowQuery";
 const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 static KWIN_PLUGIN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -475,7 +475,7 @@ impl KwinWindowCallback {
     }
 }
 
-#[zbus::interface(name = "dev.avifenesh.ComputerUseLinux.KWinWindowQuery")]
+#[zbus::interface(name = "dev.avifenesh.ComputerUseKwin.KWinWindowQuery")]
 impl KwinWindowCallback {
     fn receive_windows(
         &self,
@@ -1475,10 +1475,31 @@ mod adapter_tests {
     }
 
     #[test]
+    fn kwin_callback_contract_uses_computer_use_kwin_identity() {
+        let object_path = "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery/test";
+        let interface = "dev.avifenesh.ComputerUseKwin.KWinWindowQuery";
+        let script = kwin_window_script_source(
+            ":1.234",
+            object_path,
+            "computer_use_kwin_kwin_window_query_test",
+        )
+        .unwrap();
+
+        assert_eq!(
+            KWIN_CALLBACK_OBJECT_PATH_PREFIX,
+            "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery"
+        );
+        assert_eq!(KWIN_CALLBACK_INTERFACE, interface);
+        assert!(script.contains(&format!(r#"var objectPath = "{object_path}";"#)));
+        assert!(script.contains(&format!(r#"var iface = "{interface}";"#)));
+        assert!(!script.contains("ComputerUseLinux"));
+    }
+
+    #[test]
     fn kwin_window_script_supports_plasma5_and_plasma6_window_apis() {
         let script = kwin_window_script_source(
             ":1.234",
-            "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
+            "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery/test",
             "computer_use_kwin_kwin_window_query_test",
         )
         .unwrap();
@@ -1502,7 +1523,7 @@ mod adapter_tests {
     fn kwin_activation_script_focuses_window_directly() {
         let script = kwin_activate_script_source(
             ":1.234",
-            "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
+            "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery/test",
             "computer_use_kwin_kwin_window_query_test",
             "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
         )
@@ -1523,7 +1544,7 @@ mod adapter_tests {
     fn kwin_move_and_resize_scripts_use_live_unspecified_frame_geometry() {
         let args = (
             ":1.234",
-            "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery/test",
+            "/dev/avifenesh/ComputerUseKwin/KWinWindowQuery/test",
             "computer_use_kwin_kwin_window_query_test",
             "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
         );
