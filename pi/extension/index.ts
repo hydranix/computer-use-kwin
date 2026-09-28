@@ -122,8 +122,6 @@ const TOOL_ALIASES: Record<string, string[]> = {
 	screenshot: ["image", "screen capture"],
 	scroll: ["wheel", "page"],
 	set_value: ["input value", "text field", "slider"],
-	setup_accessibility: ["at-spi", "accessibility setup"],
-	setup_window_targeting: ["gnome extension", "window setup"],
 	type_text: ["write text", "keyboard text"],
 };
 

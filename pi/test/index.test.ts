@@ -123,6 +123,18 @@ function createPi() {
 describe("native Pi extension", () => {
 	let agentDir: string;
 
+	it("catalog contains only supported tools and KWin geometry descriptions", () => {
+		const names = GENERATED_MCP_TOOLS.map((tool) => tool.name);
+		expect(names).not.toContain("setup_accessibility");
+		expect(names).not.toContain("setup_window_targeting");
+
+		for (const name of ["move_window", "resize_window"]) {
+			const tool = GENERATED_MCP_TOOLS.find((candidate) => candidate.name === name);
+			expect(tool?.description).toMatch(/KWin|Plasma/i);
+			expect(tool?.description).not.toMatch(/GNOME|X11/i);
+		}
+	});
+
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "computer-use-linux-pi-test-"));
 		vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);

@@ -8,8 +8,8 @@ export interface GeneratedMcpToolDefinition {
 }
 
 export const GENERATED_SERVER_VERSION = "0.7.4";
-export const GENERATED_TOOL_CATALOG_HASH = "a28811e528ada60c60d5e493d3680249428a65037cbd741ab0efa4711dd91837";
-export const GENERATED_SHELL_TOOL_CATALOG_HASH = "3e5700e7be824d965170c202204cb512ee41b7162088050a8d7f479d617d15d3";
+export const GENERATED_TOOL_CATALOG_HASH = "3c942d0c78f6ff05447100733a6ddc5db2497d52edebe9749eedfafb4a6697be";
+export const GENERATED_SHELL_TOOL_CATALOG_HASH = "157777e9069603d6dba6153ea823c1a548d6261c761ac65ec8fb06403e915651";
 export const GENERATED_MCP_TOOLS =
 [
   {
@@ -523,7 +523,7 @@ export const GENERATED_MCP_TOOLS =
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Move a window to a new desktop position (frame top-left in desktop coordinates). Useful to recover windows that are partially off-screen. Works through the computer-use-linux GNOME Shell extension or a generic X11/EWMH window manager (wmctrl).",
+    "description": "Move a window to a new desktop position (frame top-left in desktop coordinates) through KWin scripting. Useful to recover windows that are partially off-screen.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -685,7 +685,7 @@ export const GENERATED_MCP_TOOLS =
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Press a key or key-combination on the keyboard, optionally after focusing a target window or terminal selector. Key grammar (case-insensitive; hyphens/spaces ignored): combos join with '+', e.g. Ctrl+L or Ctrl+Shift+T. Modifiers: ctrl/control, alt/option, shift, meta/super/cmd/command. Named keys: enter/return, escape/esc, tab, backspace, delete/del, space, home, end, pageup, pagedown, arrowleft/left, arrowright/right, arrowup/up, arrowdown/down, f1-f12. Plus single US letters a-z and digits 0-9. Anything else returns an error (never silently dropped). On Wayland, chords are sent through an active remote desktop portal keyboard session when one is available (or when ydotool is absent), falling back to ydotool otherwise. Note: compositor-level shortcuts (e.g. Super+Up) may be consumed by GNOME before reaching the app.",
+    "description": "Press a key or key-combination on the keyboard, optionally after focusing a target window or terminal selector. Key grammar (case-insensitive; hyphens/spaces ignored): combos join with '+', e.g. Ctrl+L or Ctrl+Shift+T. Modifiers: ctrl/control, alt/option, shift, meta/super/cmd/command. Named keys: enter/return, escape/esc, tab, backspace, delete/del, space, home, end, pageup, pagedown, arrowleft/left, arrowright/right, arrowup/up, arrowdown/down, f1-f12. Plus single US letters a-z and digits 0-9. Anything else returns an error (never silently dropped). On Wayland, chords are sent through an active remote desktop portal keyboard session when one is available (or when ydotool is absent), falling back to ydotool otherwise. Note: compositor-level shortcuts (e.g. Super+Up) may be consumed by the desktop before reaching the app.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -773,7 +773,7 @@ export const GENERATED_MCP_TOOLS =
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Resize a window to a new frame width/height in desktop pixels, unmaximizing it first if needed. Useful to fit a window fully on-screen. Works through the computer-use-linux GNOME Shell extension or a generic X11/EWMH window manager (wmctrl).",
+    "description": "Resize a window to a new frame width/height in desktop pixels through KWin scripting, unmaximizing it first if needed. Useful to fit a window fully on-screen.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -1161,34 +1161,6 @@ export const GENERATED_MCP_TOOLS =
       "type": "object"
     },
     "name": "set_value"
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    },
-    "description": "Enable GNOME accessibility through gsettings so Linux Computer Use can read AT-SPI trees.",
-    "inputSchema": {
-      "properties": {},
-      "type": "object"
-    },
-    "name": "setup_accessibility"
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    },
-    "description": "Install and enable the optional GNOME Shell extension used for exact window list/focus targeting when GNOME blocks native introspection.",
-    "inputSchema": {
-      "properties": {},
-      "type": "object"
-    },
-    "name": "setup_window_targeting"
   },
   {
     "annotations": {
