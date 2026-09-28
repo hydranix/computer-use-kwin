@@ -1,12 +1,20 @@
 # computer-use-kwin
 
-NPM wrapper for the `computer-use-kwin` MCP server, packaged as
-[`@hydranix/computer-use-kwin`](https://www.npmjs.com/package/@hydranix/computer-use-kwin).
-This build focuses on KDE Plasma 6 on Wayland.
+Source and usage notes for the `computer-use-kwin` MCP server and its intended
+npm package identity, `@hydranix/computer-use-kwin`. This is a separate,
+KWin-specific modification of
+[`agent-sh/computer-use-linux`](https://github.com/agent-sh/computer-use-linux),
+originally developed by [Avi Fenesh](https://github.com/avifenesh). The
+upstream MIT license and copyright attribution are preserved.
+
+The npm registry package and fork release assets are not verified as available.
+Use a source build for now:
 
 ```bash
-npm install -g @hydranix/computer-use-kwin
-computer-use-kwin doctor
+git clone https://github.com/hydranix/computer-use-kwin.git
+cd computer-use-kwin
+cargo build --locked
+target/debug/computer-use-kwin doctor
 ```
 
 The server uses XDG desktop portals for capture and RemoteDesktop input,
@@ -53,15 +61,16 @@ mcp_servers:
     connect_timeout: 30
 ```
 
-The package downloads the matching Linux x86_64 or aarch64 binary from the
-GitHub release for this package version and verifies the `.sha256` asset
-before installing it.
+After the npm package and fork release assets are published and verified, the
+wrapper is intended to download the matching Linux x86_64 or aarch64 binary
+and verify its `.sha256` asset before installing it.
 
-When installed through Pi, the package supplies native, dynamically loaded
+After publication, installing through Pi will supply native, dynamically loaded
 `computer_use_kwin_*` tools. No separate MCP adapter or manual MCP
 configuration is required. Native tools require Pi 0.84.4 or newer; the
 standalone CLI wrapper retains Node.js 18 support.
 
-If you already built or installed the binary yourself, set
+When running the wrapper from a local package build, if you already built or
+installed the binary yourself, set
 `COMPUTER_USE_KWIN_BIN=/path/to/computer-use-kwin` to make the wrapper use
 that executable instead.

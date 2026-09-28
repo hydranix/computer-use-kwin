@@ -1,7 +1,7 @@
 ---
 name: computer-use-kwin
 description: "Linux desktop observation and control for KDE Plasma 6 on Wayland via native Pi tools or the computer-use-kwin MCP server."
-author: agent-sh
+author: "hydranix fork; original project by Avi Fenesh"
 license: MIT
 platforms: [linux]
 compatibility: "Native Pi tools require Pi 0.84.4+ and Node.js 22.19+; the standalone CLI/MCP server supports Node.js 18+."
@@ -9,14 +9,20 @@ compatibility: "Native Pi tools require Pi 0.84.4+ and Node.js 22.19+; the stand
 
 # computer-use-kwin
 
+This skill describes a KWin-only modification of
+[`agent-sh/computer-use-linux`](https://github.com/agent-sh/computer-use-linux),
+originally developed by [Avi Fenesh](https://github.com/avifenesh). It is
+maintained separately from the upstream project and preserves its MIT license
+and copyright attribution.
+
 Use `computer-use-kwin` to observe or operate a KDE Plasma 6 Wayland desktop:
 read application accessibility state, take screenshots, inspect and control
 windows, click, scroll, type, press keys, or invoke AT-SPI actions.
 
 ## Install
 
-The npm and crates.io packages are not published yet. These registry install
-commands are for a future release; use a source checkout in the meantime.
+Registry package availability has not been verified. Use a source checkout
+now; the registry install commands below are for a future publication.
 
 Build the MCP server from the repository root:
 
@@ -36,7 +42,8 @@ COMPUTER_USE_KWIN_BIN="$PWD/target/debug/computer-use-kwin" \
 ```
 
 This enables Pi's `computer_use_kwin_*` tools. It does not put
-`computer-use-kwin` on `PATH`; shell commands below need the CLI install.
+`computer-use-kwin` on `PATH`; use the source-built binary's full path for
+shell commands until a registry install is available.
 
 ### Shell CLI / MCP server
 

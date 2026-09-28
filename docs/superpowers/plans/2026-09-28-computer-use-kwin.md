@@ -8,6 +8,11 @@
 
 **Tech Stack:** Git/GitHub CLI, Rust/Cargo, Node.js/npm, TypeScript/Vitest, Python and Bash CI scripts.
 
+**Legacy identifier note:** Names such as `computer-use-linux` and
+`COMPUTER_USE_LINUX_*` in this plan describe the upstream or pre-rename source
+paths and identifiers used by the completed migration steps. They are not
+current fork install or command instructions.
+
 ---
 
 ## File map
@@ -278,7 +283,7 @@ git commit -m "refactor: rename Pi and Hermes integrations"
 
 **Files:** `README.md`, `npm/README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/workflows/ci.yml`, and current integration guides under `skills/computer-use-kwin/`.
 
-- [ ] **Step 1: Add explicit fork provenance and migration guidance**
+- [x] **Step 1: Add explicit fork provenance and migration guidance**
 
 Update `README.md` with the new title, badges and links for
 `hydranix/computer-use-kwin`, package/crate installation names, KWin-specific
@@ -293,7 +298,7 @@ originally developed by Avi Fenesh; preserve the MIT license and author
 attribution. Update contribution and security guidance to identify the fork
 and its new paths.
 
-- [ ] **Step 2: Update CI and release artifact paths**
+- [x] **Step 2: Update CI and release artifact paths**
 
 In `.github/workflows/ci.yml`, update build/test binary paths, wrapper checks,
 local install smoke tests, Pi package path, MCP catalog checks, release asset
@@ -301,7 +306,7 @@ names, GitHub release URL, and published executable path to the new identity.
 Keep npm publication on `@hydranix/computer-use-kwin`; do not add a publishing
 step or trigger a release.
 
-- [ ] **Step 3: Audit active identifiers without rewriting history**
+- [x] **Step 3: Audit active identifiers without rewriting history**
 
 Run:
 
@@ -319,7 +324,7 @@ package, environment variable, tool, release, or install reference. Keep
 Keep `.github/workflows/sync-reminder.yml` source-specific; it describes the
 original project's Codex Desktop embedding rather than the fork's product ID.
 
-- [ ] **Step 4: Commit documentation and CI changes**
+- [x] **Step 4: Commit documentation and CI changes**
 
 ```bash
 git add README.md CONTRIBUTING.md SECURITY.md .github/workflows/ci.yml

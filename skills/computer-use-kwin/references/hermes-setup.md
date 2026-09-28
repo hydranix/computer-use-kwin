@@ -5,8 +5,8 @@ description: "Hermes agent setup for the computer-use-kwin MCP server."
 
 # Hermes Setup
 
-The registry package is not published yet. Build the MCP server from a source
-checkout before configuring Hermes:
+Registry package availability has not been verified. Build the MCP server
+from a source checkout before configuring Hermes:
 
 ```bash
 cargo build --locked

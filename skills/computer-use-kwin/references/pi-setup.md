@@ -7,8 +7,9 @@ description: "Pi coding agent setup for native computer-use-kwin tools."
 
 ## Install
 
-The npm package is not published yet. The registry command below is for a
-future release; for now, build from a source checkout:
+Npm package availability has not been verified. Use this source checkout
+installation now; the registry instructions below are for a future
+publication:
 
 ```bash
 cargo build --locked
@@ -82,9 +83,10 @@ automatically; call `get_app_state` again before another element-based action.
 
 ## Migration from the adapter-based package
 
-The previous adapter-based integration required `pi-mcp-adapter` and wrote a
-`computer-use-linux` entry into `mcp.json` under the configured Pi agent
-directory.
+The previous upstream adapter-based integration required `pi-mcp-adapter` and
+wrote a `computer-use-linux` entry into `mcp.json` under the configured Pi
+agent directory. The native fork keeps reading this old entry only to show a
+migration notice.
 
 The native integration does not write MCP configuration. It reads only the
 legacy entry location to show a migration notice. After updating:

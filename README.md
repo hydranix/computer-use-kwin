@@ -1,34 +1,38 @@
 <div align="center">
-  <h1>computer-use-linux for KDE Plasma 6</h1>
+  <h1><a href="https://github.com/hydranix/computer-use-kwin">computer-use-kwin</a> for KDE Plasma 6</h1>
   <p><strong>Control a KDE Plasma 6 Wayland desktop from an MCP host.</strong></p>
   <p>
     <a href="https://github.com/hydranix/computer-use-kwin/actions/workflows/ci.yml"><img src="https://github.com/hydranix/computer-use-kwin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://crates.io/crates/computer-use-kwin"><img src="https://img.shields.io/crates/v/computer-use-kwin.svg" alt="crates.io"></a>
-    <a href="https://www.npmjs.com/package/@hydranix/computer-use-kwin"><img src="https://img.shields.io/npm/v/@hydranix/computer-use-kwin.svg" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   </p>
 </div>
 
 > ⚡ Running this agent 24/7? [**tiyuvta inference**](https://inference.tiyuvta.ai) — hosted LLM inference built for always-on agents, OpenAI/Anthropic-compatible APIs.
 
-`computer-use-linux` is focused on KDE Plasma 6 on Wayland. It reads shared
+`computer-use-kwin` is focused exclusively on KDE Plasma 6 on Wayland. It reads shared
 AT-SPI accessibility trees, captures through XDG desktop portals, and controls
 windows through KWin scripting.
+
+> **Fork and provenance:** This is a separate, KWin-specific modification of
+> [`computer-use-linux`](https://github.com/agent-sh/computer-use-linux),
+> originally developed by [Avi Fenesh](https://github.com/avifenesh). It is
+> not the upstream project and does not claim the original authorship. The
+> original MIT license and copyright attribution are preserved in [LICENSE](LICENSE).
 
 ```bash
 git clone https://github.com/hydranix/computer-use-kwin.git
 cd computer-use-kwin
-cargo build --release
+cargo build --locked --release
 ./target/release/computer-use-kwin doctor | jq .readiness
 ```
 
-Build this fork from source for now; its `computer-use-kwin` crate and
-`@hydranix/computer-use-kwin` npm package are not published until the first
-fork release.
+Build from source for now. The `computer-use-kwin` crate,
+`@hydranix/computer-use-kwin` npm package, and fork release assets are future
+distribution paths; their availability is not verified.
 
 ## What this is
 
-`computer-use-linux` is a Rust MCP server and CLI for KDE Plasma 6 on Wayland.
+`computer-use-kwin` is a Rust MCP server and CLI for KDE Plasma 6 on Wayland.
 Any MCP host — Codex Desktop's Linux build, Claude Desktop, [Hermes
 Agent](https://github.com/NousResearch/hermes-agent), or your own client — can
 spawn it to read accessibility trees, list and focus windows, take screenshots,
@@ -47,10 +51,11 @@ services:
 - **Shared AT-SPI state.** Semantic selectors and app state use the session's
   shared accessibility services; system-level GTK/AT-SPI prerequisites are
   configured outside this application.
-- **One JSON readiness report.** `computer-use-linux doctor` reports portal,
+- **One JSON readiness report.** `computer-use-kwin doctor` reports portal,
   AT-SPI, windowing, and input readiness with explicit blockers.
 
-The crate was extracted from [`codex-desktop-linux`](https://github.com/avifenesh/codex-desktop-linux) (the Linux distribution of Codex Desktop), which still bundles this binary as a built-in plugin. This standalone repo is the upstream.
+The original `codex-desktop-linux` project is maintained separately. This fork
+does not replace or modify its bundled integration.
 
 ## Features
 
@@ -109,20 +114,20 @@ Targeted `press_key`/`type_text` results append focused-element feedback from AT
 
 **Conditional host execution**
 
-- `complete_interaction` - optional desktop completion notification, registered only with `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1`. Repeated calls can create repeated notifications; it does not provide desktop exclusivity.
+- `complete_interaction` - optional desktop completion notification, registered only with `COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE=1`. Repeated calls can create repeated notifications; it does not provide desktop exclusivity.
 
-- `run_shell` — same-user `/bin/sh -c` execution without login-profile loading, registered only when the server operator starts the MCP process with `COMPUTER_USE_LINUX_ENABLE_SHELL=1`. It is deliberately absent by default and is not a sandbox.
+- `run_shell` — same-user `/bin/sh -c` execution without login-profile loading, registered only when the server operator starts the MCP process with `COMPUTER_USE_KWIN_ENABLE_SHELL=1`. It is deliberately absent by default and is not a sandbox.
 
 ### MCP safety contract
 
-`computer-use-linux` is not a read-only data source. It can observe the local desktop and, when a mutating tool is called, can change real application state. The `tools/list` response includes MCP `ToolAnnotations` so hosts can surface this distinction before invocation:
+`computer-use-kwin` is not a read-only data source. It can observe the local desktop and, when a mutating tool is called, can change real application state. The `tools/list` response includes MCP `ToolAnnotations` so hosts can surface this distinction before invocation:
 
 | Class | Tools | Contract |
 | --- | --- | --- |
 | Read-only observation | `doctor`, `list_apps`, `list_windows`, `focused_window`, `get_app_state` | `readOnlyHint=true`; may reveal app, window, accessibility, and screenshot contents. `get_app_state` may trigger the desktop screenshot portal prompt. |
 | UI state mutators | `activate_window`, `move_window`, `resize_window`, `scroll`, `screenshot` | `readOnlyHint=false`, `destructiveHint=false`; changes focus, geometry, or scroll position in the live desktop, or raises a window to capture it. |
 | Desktop action mutators | `click`, `drag`, `press_key`, `type_text`, `perform_action`, `set_value` | `readOnlyHint=false`, `destructiveHint=true`, `openWorldHint=true`; can trigger arbitrary actions in whatever local application is targeted. |
-| Conditional host-code execution | `run_shell` | Absent unless `COMPUTER_USE_LINUX_ENABLE_SHELL=1`; when enabled, `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=true`. Runs with the MCP server user's host permissions. |
+| Conditional host-code execution | `run_shell` | Absent unless `COMPUTER_USE_KWIN_ENABLE_SHELL=1`; when enabled, `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=true`. Runs with the MCP server user's host permissions. |
 
 Annotations are safety hints, not an authorization system. MCP hosts should still ask the user before calls that could submit, delete, send, purchase, overwrite, or otherwise commit state.
 
@@ -131,12 +136,12 @@ Annotations are safety hints, not an authorization system. MCP hosts should stil
 The binary also exposes the same capabilities from the CLI for scripting and debugging:
 
 ```
-computer-use-linux mcp                                  # stdio MCP server
-computer-use-linux doctor                               # JSON readiness report
-computer-use-linux apps
-computer-use-linux state [APP_NAME]
-computer-use-linux screenshot                           # JSON screenshot summary
-computer-use-linux windows
+computer-use-kwin mcp                                  # stdio MCP server
+computer-use-kwin doctor                               # JSON readiness report
+computer-use-kwin apps
+computer-use-kwin state [APP_NAME]
+computer-use-kwin screenshot                           # JSON screenshot summary
+computer-use-kwin windows
 ```
 
 ## Support matrix
@@ -145,7 +150,7 @@ computer-use-linux windows
 | --- | --- | --- |
 | KDE Plasma 6 on Wayland | KWin scripting | Sole supported target and window-management backend; screenshots and RemoteDesktop input use XDG portals, with ydotool and direct uinput pointer fallback. Shared AT-SPI provides application state. |
 
-If you run on a desktop not covered above, or a covered backend does not come up cleanly, please open an issue with the output of `computer-use-linux doctor` so we can extend the matrix honestly.
+If you run on a desktop not covered above, or a covered backend does not come up cleanly, please open an issue with the output of `computer-use-kwin doctor` so we can extend the matrix honestly.
 
 ## Install
 
@@ -154,15 +159,27 @@ If you run on a desktop not covered above, or a covered backend does not come up
 ```bash
 git clone https://github.com/hydranix/computer-use-kwin.git
 cd computer-use-kwin
-cargo build --release
+cargo build --locked --release
 ./target/release/computer-use-kwin doctor | jq .readiness
 install -Dm755 target/release/computer-use-kwin "$HOME/.local/bin/computer-use-kwin"
 ```
 
-This builds the `computer-use-kwin` binary in `target/release/`. The fork's
-`computer-use-kwin` crate, `@hydranix/computer-use-kwin` npm package, and
-prebuilt release assets are not available until its first release; use the
-source build above in the meantime.
+This builds the `computer-use-kwin` binary in `target/release/`. Until registry
+packages and fork release assets are verified as available, use the source
+build above rather than a registry or release download.
+
+## Migration from the upstream project
+
+This repository uses its own `computer-use-kwin` binary and MCP server name,
+`@hydranix/computer-use-kwin` npm identity, and `computer_use_kwin_*` Pi tool
+prefix. Update host configuration and scripts to use these fork identifiers;
+the registry package names above are future-only, not current install commands.
+Use the `COMPUTER_USE_KWIN_*` environment variables documented below.
+
+Existing XDG RemoteDesktop restore tokens remain under the original
+`computer-use-linux` state-directory name so an upgrade does not discard
+previously granted portal access. This is a persistence compatibility path,
+not the active executable or package name.
 
 ## Wire it into your MCP host
 
@@ -170,7 +187,8 @@ The binary speaks the `rmcp` 2024-11-05 stdio protocol. Pass `mcp` as the only a
 
 ### Codex Desktop (Linux build)
 
-The Linux build of Codex Desktop already bundles this binary as a plugin. You don't need to wire it up manually — the plugin definition lives in [`codex-desktop-linux`](https://github.com/avifenesh/codex-desktop-linux) under its `plugins/` directory and is enabled by default. To upgrade the plugin in place, replace the binary it ships with the one from this repo's release assets.
+The Linux build of Codex Desktop has its own separately maintained plugin.
+This fork does not modify or provide that plugin.
 
 ### Claude Code (CLI)
 
@@ -182,13 +200,13 @@ Use the `claude mcp add` command to register the binary as a stdio MCP server. P
 
 ```bash
 # User-wide install (recommended for desktop control)
-claude mcp add --scope user computer-use-linux -- computer-use-linux mcp
+claude mcp add --scope user computer-use-kwin -- computer-use-kwin mcp
 
 # Verify the server is registered and reachable
 claude mcp list
 ```
 
-If `computer-use-linux` is not on `PATH`, pass the absolute path (e.g. `~/.local/bin/computer-use-linux`). Inside a Claude Code session, run `/mcp` to confirm the tools are loaded.
+If `computer-use-kwin` is not on `PATH`, pass the absolute path (e.g. `~/.local/bin/computer-use-kwin`). Inside a Claude Code session, run `/mcp` to confirm the tools are loaded.
 
 ### Claude Desktop
 
@@ -197,8 +215,8 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "computer-use-linux": {
-      "command": "computer-use-linux",
+    "computer-use-kwin": {
+      "command": "computer-use-kwin",
       "args": ["mcp"]
     }
   }
@@ -249,8 +267,8 @@ from older adapter-based installs.
 Install the companion Hermes skill so Hermes has the desktop-specific runbook:
 
 ```bash
-hermes skills tap add agent-sh/computer-use-linux
-hermes skills install agent-sh/computer-use-linux/computer-use-linux
+hermes skills tap add hydranix/computer-use-kwin
+hermes skills install hydranix/computer-use-kwin/computer-use-kwin
 ```
 
 The skill is optional but recommended for Hermes users. It teaches Hermes how to install, configure, verify, and call the Linux desktop MCP safely. It follows the same `skills/<name>/SKILL.md` tap layout used by Hermes community skills.
@@ -258,17 +276,17 @@ The skill is optional but recommended for Hermes users. It teaches Hermes how to
 Then add the stdio MCP server:
 
 ```bash
-hermes mcp add computer-use-linux --command computer-use-linux --args mcp
-hermes mcp test computer-use-linux
-hermes mcp configure computer-use-linux
+hermes mcp add computer-use-kwin --command computer-use-kwin --args mcp
+hermes mcp test computer-use-kwin
+hermes mcp configure computer-use-kwin
 ```
 
 `configure` opens Hermes' tool-selection UI for the server. The generated config should look like this:
 
 ```yaml
 mcp_servers:
-  computer-use-linux:
-    command: computer-use-linux
+  computer-use-kwin:
+    command: computer-use-kwin
     args: ["mcp"]
     timeout: 120
     connect_timeout: 30
@@ -279,17 +297,17 @@ inherit_mcp_toolsets: true
 
 If you installed the binary somewhere that is not on `PATH`, pass the absolute path as `--command`.
 
-Restart Hermes after editing the config. Hermes registers the tools as `mcp_computer_use_linux_<tool>` and creates the `mcp-computer-use-linux` runtime toolset.
+Restart Hermes after editing the config. Hermes registers the tools as `mcp_computer_use_kwin_<tool>` and creates the `mcp-computer-use-kwin` runtime toolset.
 
 You can verify both sides before asking Hermes to use the desktop:
 
 ```bash
-computer-use-linux doctor | jq .readiness
-hermes skills inspect agent-sh/computer-use-linux/computer-use-linux
-hermes chat --toolsets mcp-computer-use-linux -q "List the current desktop windows."
+computer-use-kwin doctor | jq .readiness
+hermes skills inspect hydranix/computer-use-kwin/computer-use-kwin
+hermes chat --toolsets mcp-computer-use-kwin -q "List the current desktop windows."
 ```
 
-For one-off installs without adding the tap first, Hermes also accepts `hermes skills install agent-sh/computer-use-linux/skills/computer-use-linux`.
+For one-off source installs without adding the tap first, Hermes also accepts `hermes skills install hydranix/computer-use-kwin/skills/computer-use-kwin`.
 
 ### Generic MCP client
 
@@ -300,7 +318,7 @@ Spawn the binary with `["mcp"]` as the argv tail. It speaks JSON-RPC over stdio 
 1. **Run `doctor`.**
 
    ```bash
-   computer-use-linux doctor | jq .readiness
+   computer-use-kwin doctor | jq .readiness
    ```
 
    Aim for `can_register_mcp_tools`, `can_build_accessibility_tree`, `can_send_development_input`, `can_query_windows`, and `can_capture_screenshots` all `true`. The `blockers` array should be empty. `can_capture_screenshots` means a route was detected, not that a test capture succeeded.
@@ -327,19 +345,19 @@ These optional environment variables configure the server or npm wrapper.
 
 | Variable | Effect |
 | --- | --- |
-| `COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE` | Set exactly to `1` to expose the optional `complete_interaction` notification tool. Requires `notify-send` and a desktop notification service; disabled by default. |
+| `COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE` | Set exactly to `1` to expose the optional `complete_interaction` notification tool. Requires `notify-send` and a desktop notification service; disabled by default. |
 | `CU_DISABLE_ABS_POINTER` | Disable the uinput absolute pointer and click through `ydotool` instead for setups where the abs-pointer device misbehaves. |
-| `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP` | Set exactly to `1` to ask a version 2 or newer RemoteDesktop portal to remember pointer and keyboard grants across processes. The first dialog still appears. Later processes reuse separate single-use restore tokens stored with mode `0600` under `$XDG_STATE_HOME/computer-use-linux/` (or `~/.local/state/computer-use-linux/`). Unset, every new process is prompted. No effect when input is not using the portal. |
-| `COMPUTER_USE_LINUX_ENABLE_SHELL` | Set exactly to `1` before starting the MCP server to register the destructive `run_shell` tool. Unset by default. Do not enable for untrusted or unattended MCP hosts. |
+| `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP` | Set exactly to `1` to ask a version 2 or newer RemoteDesktop portal to remember pointer and keyboard grants across processes. The first dialog still appears. Later processes reuse separate single-use restore tokens stored with mode `0600` under `$XDG_STATE_HOME/computer-use-linux/` (or `~/.local/state/computer-use-linux/`) for compatibility with earlier grants. Unset, every new process is prompted. No effect when input is not using the portal. |
+| `COMPUTER_USE_KWIN_ENABLE_SHELL` | Set exactly to `1` before starting the MCP server to register the destructive `run_shell` tool. Unset by default. Do not enable for untrusted or unattended MCP hosts. |
 
 **npm wrapper** (set during `npm install`, or before running):
 
 | Variable | Effect |
 | --- | --- |
-| `COMPUTER_USE_LINUX_BIN` | Run this binary instead of the one bundled by the npm package. |
-| `COMPUTER_USE_LINUX_DOWNLOAD_BASE` | Override the GitHub release base URL the installer downloads from (mirrors, air-gapped hosts). |
-| `COMPUTER_USE_LINUX_SKIP_DOWNLOAD=1` | Skip the post-install binary download entirely. |
-| `COMPUTER_USE_LINUX_LOCAL_BINARY` | Install from a local build instead of downloading (used by CI and local testing). |
+| `COMPUTER_USE_KWIN_BIN` | Run this binary instead of the one bundled by the npm package after publication. |
+| `COMPUTER_USE_KWIN_DOWNLOAD_BASE` | Override the GitHub release base URL the installer downloads from (mirrors, air-gapped hosts) after publication. |
+| `COMPUTER_USE_KWIN_SKIP_DOWNLOAD=1` | Skip the post-install binary download entirely. |
+| `COMPUTER_USE_KWIN_LOCAL_BINARY` | Install from a local build instead of downloading (used by CI and local testing). |
 
 ## Architecture
 
@@ -357,7 +375,7 @@ Computer-use tooling is, by definition, a privilege-escalation surface. The thre
 - **`ydotoold` runs as a per-user service** with read/write access to `/dev/uinput`. `install.sh` automates this for systemd user sessions and prints manual supervisor guidance elsewhere. Any process that can connect to its socket (`/run/user/$UID/.ydotool_socket`, mode `0600` by default) can synthesize arbitrary input — keypresses, clicks, anything. Keep the socket in the user runtime dir (the default), not in `/tmp` or any world-readable location. Do not run `ydotoold` as root or as a system service.
 - **Desktop portals request permission.** Granting screenshot or RemoteDesktop access lets the MCP host capture or control the desktop for the permitted session. If you don't want screenshot access, decline the prompt and use `get_app_state` with `include_screenshot: false`.
 - **AT-SPI exposes window contents to clients on your session bus.** It is also used by screen readers and shares the same trust boundary. Install and configure the system-level GTK/AT-SPI prerequisites required by your applications.
-- **Persisted remote control is opt-in.** `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` stores separate portal restore tokens for pointer and keyboard in the user state directory with mode `0600`. A same-user process that can read those files can restore control without a new prompt until the desktop revokes the grant. Leave the variable unset to keep a prompt on every new process.
+- **Persisted remote control is opt-in.** `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP=1` stores separate portal restore tokens for pointer and keyboard in the user state directory with mode `0600`. A same-user process that can read those files can restore control without a new prompt until the desktop revokes the grant. Leave the variable unset to keep a prompt on every new process.
 - **No network.** This binary opens no TCP/UDP listener, makes no outbound Internet connections, and ships no telemetry. It does use local session transports such as DBus and the per-user `ydotoold` Unix socket.
 - **Mutating tools are explicit.** The MCP tool list annotates read-only versus mutating tools, and CI fails if the published tool annotations drift from the table above. Treat those annotations as hints; the host is still responsible for user approval and policy.
 
@@ -366,7 +384,7 @@ If you're running this on a shared workstation, set `ydotoold`'s socket permissi
 ## Troubleshooting
 
 To receive an explicit completion cue, start the MCP server with
-`COMPUTER_USE_LINUX_NOTIFY_ON_COMPLETE=1`. This exposes `complete_interaction`,
+`COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE=1`. This exposes `complete_interaction`,
 a parameter-free tool the agent calls once after finishing its desktop work.
 It submits a notification through `notify-send` with a two-second execution
 limit and bounded process cleanup. Missing services, errors, or timeouts return
@@ -376,7 +394,7 @@ No sound or additional desktop settings are enabled by this option.
 This option currently applies only to directly spawned MCP hosts. The native Pi
 extension does not forward the flag or include this optional tool in its catalog.
 
-`computer-use-linux doctor` is the source of truth. Common failure modes and fixes:
+`computer-use-kwin doctor` is the source of truth. Common failure modes and fixes:
 
 - **AT-SPI is unavailable** — verify your system-level GTK/AT-SPI packages and session accessibility services, then restart target applications if needed. There is no application setup command for accessibility.
 - **`windowing.can_list_windows = false`** — check that KWin scripting is available on the session bus.
@@ -403,7 +421,7 @@ through MCP at scales 1 and 2.
 
 ## Related
 
-- [agent-workspace-linux](https://github.com/agent-sh/agent-workspace-linux) — the sibling MCP that gives an agent its **own** isolated Linux desktop (a hidden Xvfb display with its own apps and browser) instead of driving yours. It is the inverse of this project: `computer-use-linux` automates the desktop you are already on; `agent-workspace-linux` sandboxes the agent in a separate one. Use them together.
+- [agent-workspace-linux](https://github.com/agent-sh/agent-workspace-linux) — the sibling MCP that gives an agent its **own** isolated Linux desktop (a hidden Xvfb display with its own apps and browser) instead of driving yours. It is the inverse of this project: `computer-use-kwin` automates the desktop you are already on; `agent-workspace-linux` sandboxes the agent in a separate one. Use them together.
 
 ## Contributing
 
@@ -411,7 +429,11 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the local 
 
 ## Credits
 
-Extracted from [`codex-desktop-linux`](https://github.com/avifenesh/codex-desktop-linux), the Linux distribution of Codex Desktop, which continues to ship this same binary as a bundled plugin. Maintained by [Avi Fenesh](https://github.com/avifenesh).
+The original [`computer-use-linux`](https://github.com/agent-sh/computer-use-linux)
+work was developed by [Avi Fenesh](https://github.com/avifenesh) and extracted
+from [`codex-desktop-linux`](https://github.com/avifenesh/codex-desktop-linux).
+This fork is a separate KWin-specific modification; it does not claim that
+original work or maintain the Codex Desktop integration.
 
 Built on top of:
 
@@ -420,12 +442,13 @@ Built on top of:
 - [`rmcp`](https://crates.io/crates/rmcp) — MCP runtime
 - [`ydotool`](https://github.com/ReimuNotMoe/ydotool) — Wayland-friendly uinput driver
 
-## Publishing
+## Future publication
 
-Publishing the `computer-use-kwin` crate, the `@hydranix/computer-use-kwin`
-npm package, and release assets for `hydranix/computer-use-kwin` is planned to
-be tag-driven from GitHub Actions. When preparing the first fork release, the
-repository will need these Actions secrets:
+The new crate, npm package, and release assets are intended for tag-driven
+publication from GitHub Actions after the fork is ready for its first release.
+Verify that registry packages and release assets are available before using
+those install paths; use the source build above in the meantime. When
+publication is prepared, the repository will need these Actions secrets:
 
 ```bash
 gh secret set CARGO_REGISTRY_TOKEN -R hydranix/computer-use-kwin
