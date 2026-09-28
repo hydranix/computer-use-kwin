@@ -210,7 +210,7 @@ mod tests {
     async fn dispatches_successful_kwin_move_and_resize() {
         let uuid = "b4dfacf8-a559-43c9-8b1f-ecd5cfd78359";
         let mut target = window(KWIN_BACKEND);
-        target.window_id = 15_605_548_758_018_230_245;
+        target.window_id = 5_079_648_806_832_101;
         let windows_json = format!(
             r#"{{"backend":"kwin","pluginName":"placeholder","windows":[{{"uuid":"{uuid}","caption":"Codex","normalWindow":true,"x":10,"y":20,"width":800,"height":600}}]}}"#
         );

@@ -25,6 +25,7 @@ const KWIN_SCRIPTING_OBJECT_PATH: &str = "/Scripting";
 const KWIN_SCRIPTING_INTERFACE: &str = "org.kde.kwin.Scripting";
 const KWIN_CALLBACK_OBJECT_PATH_PREFIX: &str = "/dev/avifenesh/ComputerUseLinux/KWinWindowQuery";
 const KWIN_CALLBACK_INTERFACE: &str = "dev.avifenesh.ComputerUseLinux.KWinWindowQuery";
+const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 static KWIN_PLUGIN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub fn probe() -> BackendProbe {
@@ -1282,7 +1283,7 @@ fn kwin_window_id_from_uuid(uuid: &str) -> u64 {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    hash
+    hash & MAX_SAFE_JSON_INTEGER
 }
 
 fn normalize_kwin_uuid(uuid: &str) -> Option<String> {
@@ -1456,6 +1457,14 @@ mod adapter_tests {
             kwin_window_id_from_uuid(bare),
             kwin_window_id_from_uuid(braced_upper)
         );
+    }
+
+    #[test]
+    fn kwin_window_ids_fit_javascript_safe_integer_range() {
+        let window_id = kwin_window_id_from_uuid("b4dfacf8-a559-43c9-8b1f-ecd5cfd78359");
+
+        assert!(window_id <= MAX_SAFE_JSON_INTEGER);
+        assert_eq!(window_id as f64 as u64, window_id);
     }
 
     #[test]
