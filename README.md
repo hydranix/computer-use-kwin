@@ -42,7 +42,11 @@ The build is scoped to KDE Plasma 6 Wayland and uses its shared desktop
 services:
 
 - **Portal capture and input.** XDG desktop portals provide screenshots and
-  RemoteDesktop input when available and authorized.
+  RemoteDesktop input when available and authorized. The MCP server's first
+  screenshot asks you to share your screens through the ScreenCast portal;
+  later screenshots read the newest frame from that PipeWire stream instead
+  of waiting on a Screenshot portal round trip. See
+  [Fast screenshots](#fast-screenshots).
 - **Wayland input fallbacks.** Pointer input can use `ydotool` or a direct
   uinput absolute-pointer device. Text entry uses KDE clipboard typing, with
   portal and ydotool input paths available as appropriate.
@@ -72,6 +76,32 @@ MCP tools exposed by the server:
 - `focused_window` — the window currently holding keyboard focus
 - `get_app_state` — combined screenshot + accessibility tree for a chosen app, with element indices that the input tools accept. Scope it with `app_name_or_bundle_identifier` or a window target; an unscoped call returns the whole desktop tree, reports `tree_scoped: false`, and warns
 - `screenshot` — capture the screen as a bounded PNG or JPEG image; can target a window, which is raised to the front and cropped to just that window
+
+### Fast screenshots
+
+The first desktop capture in an MCP server process opens a ScreenCast portal
+session, so KDE asks which monitors to share. That is normally the first
+`screenshot` or `get_app_state` with a screenshot; a coordinate click made
+before any screenshot also captures once to learn the desktop size. Select every monitor: the shared frames are laid out as one image of
+the whole workspace, with the same coordinate space as a Screenshot portal
+capture, and monitors you leave out appear black. Every later screenshot
+copies the newest frame from the open PipeWire stream, which skips the
+Screenshot portal's per-call render and file round trip.
+
+- The session closes after 5 minutes without a screenshot
+  (`COMPUTER_USE_KWIN_SCREENCAST_IDLE_SECS`), and the next screenshot asks
+  again. The grant is never persisted.
+- Stopping the share from the Plasma tray ends the session; the next
+  screenshot asks again.
+- If you decline the dialog, or PipeWire or the ScreenCast portal is
+  unavailable, that process uses the Screenshot portal for the rest of its
+  life and stops asking.
+- The cursor is not drawn into the frames.
+- One-shot CLI commands (`computer-use-kwin screenshot`) always use the
+  Screenshot portal.
+- libpipewire is loaded at runtime (`libpipewire-0.3.so.0`), so builds need
+  no PipeWire headers. Set `COMPUTER_USE_KWIN_SCREENCAST=0` to turn the
+  stream off entirely.
 
 Screenshot payloads are size-bounded by default before they are returned to the MCP host: max 1920 px width/height and 2 MiB image bytes, with hard caps even when callers request more. Agents that need more detail can pass `max_width`, `max_height`, `max_bytes`, `scale`, `format: "jpeg"`, or `quality`, preferably with a window target or crop. PNG remains the default; JPEG lets callers trade lossless pixels for a smaller payload before the byte cap forces further resizing. Returned screenshot metadata includes `coordinate_width`, `coordinate_height`, `scale`, `format`, and `quality` so callers can convert from a downscaled preview to desktop coordinate pixels.
 
@@ -124,7 +154,7 @@ Targeted `press_key`/`type_text` results append focused-element feedback from AT
 
 | Class | Tools | Contract |
 | --- | --- | --- |
-| Read-only observation | `doctor`, `list_apps`, `list_windows`, `focused_window`, `get_app_state` | `readOnlyHint=true`; may reveal app, window, accessibility, and screenshot contents. `get_app_state` may trigger the desktop screenshot portal prompt. |
+| Read-only observation | `doctor`, `list_apps`, `list_windows`, `focused_window`, `get_app_state` | `readOnlyHint=true`; may reveal app, window, accessibility, and screenshot contents. `get_app_state` may trigger the screen-share portal prompt (see [Fast screenshots](#fast-screenshots)). |
 | UI state mutators | `activate_window`, `move_window`, `resize_window`, `scroll`, `screenshot` | `readOnlyHint=false`, `destructiveHint=false`; changes focus, geometry, or scroll position in the live desktop, or raises a window to capture it. |
 | Desktop action mutators | `click`, `drag`, `press_key`, `type_text`, `perform_action`, `set_value` | `readOnlyHint=false`, `destructiveHint=true`, `openWorldHint=true`; can trigger arbitrary actions in whatever local application is targeted. |
 | Conditional host-code execution | `run_shell` | Absent unless `COMPUTER_USE_KWIN_ENABLE_SHELL=1`; when enabled, `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=true`. Runs with the MCP server user's host permissions. |
@@ -348,6 +378,8 @@ These optional environment variables configure the server or npm wrapper.
 | `COMPUTER_USE_KWIN_NOTIFY_ON_COMPLETE` | Set exactly to `1` to expose the optional `complete_interaction` notification tool. Requires `notify-send` and a desktop notification service; disabled by default. |
 | `CU_DISABLE_ABS_POINTER` | Disable the uinput absolute pointer and click through `ydotool` instead for setups where the abs-pointer device misbehaves. |
 | `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP` | Set exactly to `1` to ask a version 2 or newer RemoteDesktop portal to remember pointer and keyboard grants across processes. The first dialog still appears. Later processes reuse separate single-use restore tokens stored with mode `0600` under `$XDG_STATE_HOME/computer-use-linux/` (or `~/.local/state/computer-use-linux/`) for compatibility with earlier grants. Unset, every new process is prompted. No effect when input is not using the portal. |
+| `COMPUTER_USE_KWIN_SCREENCAST` | Set to `0` to stop screenshots from opening a ScreenCast portal session, so every capture goes through the Screenshot portal. Enabled by default. See [Fast screenshots](#fast-screenshots). |
+| `COMPUTER_USE_KWIN_SCREENCAST_IDLE_SECS` | Seconds without a screenshot before the ScreenCast session closes (default `300`). The next screenshot asks to share the screen again. |
 | `COMPUTER_USE_KWIN_ENABLE_SHELL` | Set exactly to `1` before starting the MCP server to register the destructive `run_shell` tool. Unset by default. Do not enable for untrusted or unattended MCP hosts. |
 
 **npm wrapper** (set during `npm install`, or before running):
@@ -362,7 +394,8 @@ These optional environment variables configure the server or npm wrapper.
 ## Architecture
 
 - **Accessibility tree** — [`atspi`](https://crates.io/crates/atspi) crate (tokio backend) talks to the AT-SPI registry on the user session bus. The tree is flattened to `(role, name, text, states, bounds)` tuples and indexed; element indices are stable for the duration of a `get_app_state` snapshot.
-- **Desktop integration** — [`zbus`](https://crates.io/crates/zbus) for XDG screenshot and RemoteDesktop portal calls and temporary KWin scripting.
+- **Desktop integration** — [`zbus`](https://crates.io/crates/zbus) for XDG Screenshot, ScreenCast, and RemoteDesktop portal calls and temporary KWin scripting.
+- **Screen capture** — a ScreenCast portal session feeds PipeWire streams read through `libpipewire-0.3`, loaded with `dlopen` at runtime. Each stream keeps only its newest frame; a screenshot copies it and converts it to PNG.
 - **MCP transport** — [`rmcp`](https://crates.io/crates/rmcp) with the `transport-io` feature; stdio framing, no network.
 - **Input** — pointer and keyboard input can use the RemoteDesktop portal; ydotool is an input fallback, with direct uinput available for absolute pointer actions. Text entry supports KDE clipboard typing.
 - **Window registry** — `list_windows`, `focused_window`, `activate_window`, `move_window`, and `resize_window` use KWin scripting.
@@ -374,6 +407,7 @@ Computer-use tooling is, by definition, a privilege-escalation surface. The thre
 
 - **`ydotoold` runs as a per-user service** with read/write access to `/dev/uinput`. `install.sh` automates this for systemd user sessions and prints manual supervisor guidance elsewhere. Any process that can connect to its socket (`/run/user/$UID/.ydotool_socket`, mode `0600` by default) can synthesize arbitrary input — keypresses, clicks, anything. Keep the socket in the user runtime dir (the default), not in `/tmp` or any world-readable location. Do not run `ydotoold` as root or as a system service.
 - **Desktop portals request permission.** Granting screenshot or RemoteDesktop access lets the MCP host capture or control the desktop for the permitted session. If you don't want screenshot access, decline the prompt and use `get_app_state` with `include_screenshot: false`.
+- **An accepted screen share stays open between screenshots.** The MCP server holds the ScreenCast stream until it has gone unused for `COMPUTER_USE_KWIN_SCREENCAST_IDLE_SECS` (5 minutes by default) and only reads it when a screenshot is requested. Plasma shows the share in the system tray for as long as it is open; stop it there, or set `COMPUTER_USE_KWIN_SCREENCAST=0`, to keep the server on per-call Screenshot portal captures.
 - **AT-SPI exposes window contents to clients on your session bus.** It is also used by screen readers and shares the same trust boundary. Install and configure the system-level GTK/AT-SPI prerequisites required by your applications.
 - **Persisted remote control is opt-in.** `COMPUTER_USE_KWIN_PERSIST_REMOTE_DESKTOP=1` stores separate portal restore tokens for pointer and keyboard in the user state directory with mode `0600`. A same-user process that can read those files can restore control without a new prompt until the desktop revokes the grant. Leave the variable unset to keep a prompt on every new process.
 - **No network.** This binary opens no TCP/UDP listener, makes no outbound Internet connections, and ships no telemetry. It does use local session transports such as DBus and the per-user `ydotoold` Unix socket.
@@ -402,6 +436,7 @@ extension does not forward the flag or include this optional tool in its catalog
 - **`input.ydotool.ok = false` with an unsupported CLI message** — install ydotool 1.0.3 or newer. A running daemon or socket alone is not enough; `doctor` verifies the required command set before advertising the backend.
 - **`input.uinput.ok = false`** — `/dev/uinput` isn't accessible to your user. Configure the device permissions using your distribution's guidance and re-login. Direct uinput provides absolute pointer input; use a portal or ydotool path for keyboard input.
 - **Portal calls hang or time out** — check that `xdg-desktop-portal` and its KDE backend are running, then inspect their user-service logs.
+- **Part of a multi-monitor screenshot is black** — that monitor was not selected in the screen-share dialog. Stop the share from the Plasma tray (or wait for the idle timeout) and select every monitor when asked again.
 - **Screenshots return black frames on multi-monitor setups** — known portal / compositor edge case. Use `get_app_state` with `include_screenshot: false` and rely on AT-SPI until the portal backend is healthy.
 - **`type_text` types into the wrong window** — pass an explicit target (`window_id`, `pid`, `wm_class`, `title`, or for terminals `tty` / `terminal_pid` / `terminal_command` / `terminal_cwd`). Without a target, input goes to whatever window currently has compositor focus.
 - **Wayland pointer actions miss an unfocused window** — injected pointer input is subject to the compositor's input-focus rules. Call `activate_window` for the target before `click`, `drag`, or coordinate `scroll`; a pointer can land at the requested coordinate without the unfocused surface receiving the action.

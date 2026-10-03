@@ -148,8 +148,11 @@ event to report `hit: true`.
 
 - Running GTK, Qt, and Electron apps may need restarting after accessibility
   prerequisites are changed.
-- The first screenshot or `get_app_state` call with screenshots enabled may
-  prompt for portal access.
+- The first screenshot or `get_app_state` call with screenshots enabled asks
+  the user to share their screens. Later screenshots reuse that share and are
+  fast. After 5 idle minutes the share closes and the next screenshot asks
+  again; if the user declines, screenshots still work through the slower
+  Screenshot portal.
 - Desktop input is stateful. Avoid concurrent tool calls against this MCP
   server.
 - Pi serializes the native Computer Use tools and keeps one process for the

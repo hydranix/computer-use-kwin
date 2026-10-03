@@ -30,7 +30,7 @@ const PORTAL_SCREENCAST_INTERFACE: &str = "org.freedesktop.portal.ScreenCast";
 const PORTAL_REQUEST_INTERFACE: &str = "org.freedesktop.portal.Request";
 const PORTAL_SESSION_INTERFACE: &str = "org.freedesktop.portal.Session";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
-const PORTAL_CALL_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const PORTAL_CALL_TIMEOUT: Duration = Duration::from_secs(5);
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(1);
 const INPUT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -75,10 +75,10 @@ pub struct PortalKeyboardSession {
 }
 
 #[derive(Debug, Clone)]
-struct PortalStream {
-    node_id: u32,
-    position: Option<(i32, i32)>,
-    size: Option<(i32, i32)>,
+pub(crate) struct PortalStream {
+    pub(crate) node_id: u32,
+    pub(crate) position: Option<(i32, i32)>,
+    pub(crate) size: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,7 +112,7 @@ struct KeyboardReleaseGuard {
     valid: Arc<AtomicBool>,
 }
 
-struct PortalSessionCleanup {
+pub(crate) struct PortalSessionCleanup {
     connection: Connection,
     session_handle: OwnedObjectPath,
     armed: bool,
@@ -604,7 +604,7 @@ impl KeyboardReleaseGuard {
 }
 
 impl PortalSessionCleanup {
-    fn new(connection: Connection, session_handle: OwnedObjectPath) -> Self {
+    pub(crate) fn new(connection: Connection, session_handle: OwnedObjectPath) -> Self {
         Self {
             connection,
             session_handle,
@@ -612,7 +612,7 @@ impl PortalSessionCleanup {
         }
     }
 
-    fn disarm(&mut self) {
+    pub(crate) fn disarm(&mut self) {
         self.armed = false;
     }
 }
@@ -1522,7 +1522,7 @@ async fn select_devices(
     Ok(())
 }
 
-fn insert_screencast_source_options<'a>(
+pub(crate) fn insert_screencast_source_options<'a>(
     options: &mut HashMap<&'a str, Value<'a>>,
     handle_token: &'a str,
 ) {
@@ -1686,7 +1686,7 @@ async fn notify_keyboard_keycode(
     Ok(())
 }
 
-async fn close_portal_session(connection: &Connection, session: &OwnedObjectPath) {
+pub(crate) async fn close_portal_session(connection: &Connection, session: &OwnedObjectPath) {
     if let Ok(proxy) = Proxy::new(
         connection,
         PORTAL_DESKTOP_SERVICE,
@@ -1725,7 +1725,7 @@ async fn remote_desktop_proxy(connection: &Connection) -> Result<Proxy<'_>> {
     .context("failed to create RemoteDesktop portal proxy")
 }
 
-async fn screencast_proxy(connection: &Connection) -> Result<Proxy<'_>> {
+pub(crate) async fn screencast_proxy(connection: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(
         connection,
         PORTAL_DESKTOP_SERVICE,
@@ -1736,7 +1736,7 @@ async fn screencast_proxy(connection: &Connection) -> Result<Proxy<'_>> {
     .context("failed to create ScreenCast portal proxy")
 }
 
-async fn portal_request_stream<'a>(
+pub(crate) async fn portal_request_stream<'a>(
     connection: &'a Connection,
     prefix: &str,
 ) -> Result<(String, SignalStream<'a>)> {
@@ -1760,7 +1760,7 @@ async fn portal_request_stream<'a>(
     Ok((request_path, response_stream))
 }
 
-async fn await_portal_response(
+pub(crate) async fn await_portal_response(
     connection: &Connection,
     handle: OwnedObjectPath,
     expected_request_path: &str,
@@ -1790,7 +1790,7 @@ async fn await_portal_response(
         .context("failed to decode portal response")
 }
 
-fn parse_streams(value: &OwnedValue) -> Result<Vec<PortalStream>> {
+pub(crate) fn parse_streams(value: &OwnedValue) -> Result<Vec<PortalStream>> {
     let streams: Vec<(u32, HashMap<String, OwnedValue>)> = value
         .try_clone()
         .context("failed to clone streams response")?
@@ -1830,11 +1830,11 @@ fn request_path(unique_name: &str, token: &str) -> String {
     )
 }
 
-fn last_path_component(path: &str) -> &str {
+pub(crate) fn last_path_component(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-fn request_token(prefix: &str) -> String {
+pub(crate) fn request_token(prefix: &str) -> String {
     format!(
         "{prefix}_{}_{:?}",
         std::process::id(),

@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Fast screenshots through a ScreenCast portal session. The MCP server's
+  first screenshot asks the user to share their monitors; later screenshots
+  copy the newest frame from the PipeWire stream instead of making a
+  Screenshot portal call. Shared monitors are laid out as one image of the
+  KWin workspace, so screenshot coordinates are unchanged. The session closes
+  after `COMPUTER_USE_KWIN_SCREENCAST_IDLE_SECS` seconds without a screenshot
+  (default 300) and the next screenshot asks again. Declining, or a missing
+  PipeWire or ScreenCast portal, falls back to the Screenshot portal for the
+  rest of the process. `COMPUTER_USE_KWIN_SCREENCAST=0` turns it off.
+  libpipewire is loaded at runtime, so builds need no new system packages.
 - Opt-in persistence for the Wayland remote-desktop portal. Set
   `COMPUTER_USE_LINUX_PERSIST_REMOTE_DESKTOP=1` to send `persist_mode=2`
   on `RemoteDesktop.SelectDevices` and reuse the single-use `restore_token`

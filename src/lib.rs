@@ -5,7 +5,9 @@ mod cli;
 mod command_runner;
 #[path = "diagnostics.rs"]
 mod diagnostics_impl;
+mod pipewire;
 mod remote_desktop;
+mod screencast;
 #[path = "screenshot.rs"]
 mod screenshot_impl;
 mod server;
@@ -37,8 +39,8 @@ pub mod diagnostics {
 
 pub mod screenshot {
     pub(crate) use crate::screenshot_impl::{
-        capture_screenshot, prepare_screenshot_payload, ScreenshotCapture, ScreenshotOutputFormat,
-        ScreenshotPayloadOptions,
+        capture_screenshot, capture_screenshot_raw_oneshot, prepare_screenshot_payload,
+        ScreenshotCapture, ScreenshotOutputFormat, ScreenshotPayloadOptions,
     };
     pub use crate::screenshot_impl::{capture_screenshot_raw, RawScreenshotCapture};
 }

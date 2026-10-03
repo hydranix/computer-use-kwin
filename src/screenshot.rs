@@ -136,7 +136,26 @@ impl ScreenshotPayloadOptions {
     }
 }
 
+/// Capture the whole desktop as a PNG.
+///
+/// The first call opens a ScreenCast portal session (the user is asked to
+/// share their screens) and later calls copy the newest frame from it, which
+/// is much faster than a Screenshot portal round trip. The session closes
+/// after `COMPUTER_USE_KWIN_SCREENCAST_IDLE_SECS` (default 300) without a
+/// capture. When screen-cast capture is unavailable or declined, this uses the
+/// Screenshot portal.
 pub async fn capture_screenshot_raw() -> Result<RawScreenshotCapture> {
+    hydrate_session_bus_env();
+    if let Some(capture) = crate::screencast::capture_raw().await {
+        return Ok(capture);
+    }
+    capture_screenshot_raw_with_portal(capture_with_portal).await
+}
+
+/// Capture through the Screenshot portal only, for short-lived callers such
+/// as one-shot CLI commands, where a screen-share prompt for a single frame
+/// would cost more than it saves.
+pub(crate) async fn capture_screenshot_raw_oneshot() -> Result<RawScreenshotCapture> {
     hydrate_session_bus_env();
     capture_screenshot_raw_with_portal(capture_with_portal).await
 }
@@ -152,7 +171,7 @@ where
 }
 
 pub async fn capture_screenshot() -> Result<ScreenshotCapture> {
-    let raw = capture_screenshot_raw().await?;
+    let raw = capture_screenshot_raw_oneshot().await?;
     prepare_screenshot_payload(raw, ScreenshotPayloadOptions::default())
 }
 
@@ -354,9 +373,13 @@ fn encode_screenshot_to_fit_bytes(
         let bytes = if options.format == ScreenshotOutputFormat::Png
             && target_width == original_width
             && target_height == original_height
+            && raw.len() <= options.max_bytes
         {
             raw.to_vec()
         } else {
+            // A full-size PNG over the cap is re-encoded before shrinking:
+            // screen-cast frames are stored with fast compression, so a
+            // tighter encoding often fits without losing resolution.
             let output = if target_width == original_width && target_height == original_height {
                 img.clone()
             } else {

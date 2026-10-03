@@ -50,7 +50,7 @@ pub(crate) async fn run_from_env() -> Result<()> {
                 .nth(3)
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            let cap = screenshot::capture_screenshot_raw().await?;
+            let cap = screenshot::capture_screenshot_raw_oneshot().await?;
             eprintln!("desktop logical size: {}x{}", cap.width, cap.height);
             let mut p = abs_pointer::AbsPointer::create(cap.width as i32, cap.height as i32)?;
             let landing = p.click(x, y, abs_pointer::PointerButton::Left, 1)?;
