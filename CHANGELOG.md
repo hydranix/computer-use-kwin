@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until the token cannot be restored, which falls back to a prompt.
   Interface version 2 is required. Unset, behavior is unchanged. (#185)
 
+### Changed
+- Screenshot downscaling uses the SIMD Lanczos3 resizer from
+  `fast_image_resize` instead of `image`'s `resize_exact`. The filter is the
+  same, so output is visually unchanged, but shrinking a large desktop to the
+  default 1920 px bound takes a fraction of the time.
+
 ### Fixed
 - X11 `scroll` no longer follows ydotool's absolute move with a single wheel
   event. That move warps the pointer through (0, 0). GTK 3 resets its XI2

@@ -14,14 +14,13 @@ use crate::{
         last_path_component, parse_streams, portal_request_stream, request_token, screencast_proxy,
         PortalSessionCleanup, PortalStream, PORTAL_CALL_TIMEOUT,
     },
-    screenshot_impl::RawScreenshotCapture,
+    screenshot_impl::{resize_lanczos3, RawScreenshotCapture},
     windowing::backends::kwin,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use image::{
     codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder},
-    imageops::{self, FilterType},
-    ExtendedColorType, ImageEncoder, RgbImage,
+    imageops, DynamicImage, ExtendedColorType, ImageEncoder, RgbImage,
 };
 use std::{
     collections::HashMap,
@@ -382,7 +381,7 @@ fn compose_desktop(mut parts: Vec<Part>, workspace: Option<LogicalRect>) -> Resu
         let image = if part.image.dimensions() == (width, height) {
             part.image
         } else {
-            imageops::resize(&part.image, width, height, FilterType::Triangle)
+            resize_lanczos3(&DynamicImage::ImageRgb8(part.image), width, height).into_rgb8()
         };
         let x = (f64::from(rect.0 - bounds.0) * scale).round() as i64;
         let y = (f64::from(rect.1 - bounds.1) * scale).round() as i64;

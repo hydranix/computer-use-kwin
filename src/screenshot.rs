@@ -1,9 +1,10 @@
 use crate::diagnostics::hydrate_session_bus_env;
 use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use fast_image_resize::{FilterType, ResizeAlg, ResizeOptions, Resizer};
 use futures_util::StreamExt;
 use image::codecs::jpeg::JpegEncoder;
-use image::imageops::FilterType;
+use image::DynamicImage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -383,7 +384,7 @@ fn encode_screenshot_to_fit_bytes(
             let output = if target_width == original_width && target_height == original_height {
                 img.clone()
             } else {
-                img.resize_exact(target_width, target_height, FilterType::Lanczos3)
+                resize_lanczos3(&img, target_width, target_height)
             };
             encode_image(&output, options)?
         };
@@ -406,6 +407,18 @@ fn encode_screenshot_to_fit_bytes(
             bytes.len(),
             options.max_bytes,
         );
+    }
+}
+
+/// Lanczos3 resize with SIMD through `fast_image_resize`, which is several
+/// times faster than `DynamicImage::resize_exact` on desktop-sized images.
+/// Falls back to `resize_exact` for pixel layouts it does not handle.
+pub(crate) fn resize_lanczos3(img: &DynamicImage, width: u32, height: u32) -> DynamicImage {
+    let mut resized = DynamicImage::new(width, height, img.color());
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
+    match Resizer::new().resize(img, &mut resized, &options) {
+        Ok(()) => resized,
+        Err(_) => img.resize_exact(width, height, image::imageops::FilterType::Lanczos3),
     }
 }
 
@@ -654,6 +667,34 @@ mod tests {
             (512, 512)
         );
         assert!(capture.resized);
+    }
+
+    #[test]
+    fn fast_resize_matches_image_lanczos3_for_png_pixel_layouts() {
+        let source = image::load_from_memory(&noisy_png(400, 300)).unwrap();
+        for img in [
+            DynamicImage::ImageRgba8(source.to_rgba8()),
+            DynamicImage::ImageRgb8(source.to_rgb8()),
+            DynamicImage::ImageLuma8(source.to_luma8()),
+        ] {
+            let fast = resize_lanczos3(&img, 300, 225);
+            let reference = img.resize_exact(300, 225, image::imageops::FilterType::Lanczos3);
+
+            assert_eq!(fast.color(), img.color());
+            assert_eq!((fast.width(), fast.height()), (300, 225));
+            let total: u64 = fast
+                .as_bytes()
+                .iter()
+                .zip(reference.as_bytes())
+                .map(|(left, right)| u64::from(left.abs_diff(*right)))
+                .sum();
+            let mean = total as f64 / fast.as_bytes().len() as f64;
+            assert!(
+                mean < 2.0,
+                "{:?} differs by {mean} per channel",
+                img.color()
+            );
+        }
     }
 
     #[test]
